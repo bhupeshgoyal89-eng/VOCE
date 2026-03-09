@@ -612,15 +612,28 @@ def page_fpa_dashboard():
         st.metric("Active Agreements", metrics['total_agreements'])
     
     with col3:
-        pending = metrics['total_vendors'] - len(certifications[certifications['status'].notna()])
+        # Calculate pending certifications
+        if not certifications.empty and 'status' in certifications.columns:
+            certified_count = len(certifications[certifications['status'].notna()])
+        else:
+            certified_count = 0
+        pending = metrics['total_vendors'] - certified_count
         st.metric("Pending Certifications", max(0, pending))
     
     with col4:
-        confirmed = len(certifications[certifications['status'] == 'confirmed'])
+        # Count confirmed
+        if not certifications.empty and 'status' in certifications.columns:
+            confirmed = len(certifications[certifications['status'] == 'confirmed'])
+        else:
+            confirmed = 0
         st.metric("Confirmed", confirmed)
     
     with col5:
-        flagged = len(certifications[certifications['status'] == 'issue_flagged'])
+        # Count flagged
+        if not certifications.empty and 'status' in certifications.columns:
+            flagged = len(certifications[certifications['status'] == 'issue_flagged'])
+        else:
+            flagged = 0
         st.metric("Issues Flagged", flagged)
     
     # Certification table
@@ -628,11 +641,14 @@ def page_fpa_dashboard():
     
     col1, col2 = st.columns(2)
     with col1:
-        selected_status = st.multiselect(
-            "Filter by status",
-            ["confirmed", "edit_requested", "issue_flagged"],
-            default=["confirmed", "edit_requested", "issue_flagged"]
-        )
+        if not certifications.empty and 'status' in certifications.columns:
+            selected_status = st.multiselect(
+                "Filter by status",
+                certifications['status'].unique().tolist(),
+                default=certifications['status'].unique().tolist()
+            )
+        else:
+            selected_status = []
     with col2:
         selected_cycle = st.selectbox("Filter by cycle", [CURRENT_CYCLE, "All"], key="cycle_filter")
     
@@ -641,7 +657,7 @@ def page_fpa_dashboard():
     else:
         filtered_certs = certifications
     
-    if selected_status:
+    if selected_status and 'status' in filtered_certs.columns:
         filtered_certs = filtered_certs[filtered_certs['status'].isin(selected_status)]
     
     if not filtered_certs.empty:
