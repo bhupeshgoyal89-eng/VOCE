@@ -181,13 +181,6 @@ Be concise and extract only relevant information from the agreement.
                 logger.info(f"  {key}: {str(value)[:100] if value else 'None'}")
         
         return result
-                "payment_obligations": None,
-                "milestone_completion": None,
-                "dependencies": None,
-                "billing_status": None
-            }
-        
-        return result
 
     @staticmethod
     def get_obligation_summary(obligations: Dict[str, Any]) -> str:
