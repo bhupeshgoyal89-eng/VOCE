@@ -548,18 +548,21 @@ def page_hod_dashboard():
                     confirm_comments = st.text_input(f"Comments (confirm {vendor_id})", value="", key=f"confirm_text_{vendor_id}")
                 with col_c2:
                     if st.button("Confirm", key=f"btn_confirm_{vendor_id}"):
-                        result = db.add_certification(
-                            vendor_id,
-                            CURRENT_CYCLE,
-                            current_user,
-                            "confirmed",
-                            confirm_comments
-                        )
-                        if result:
-                            st.success("✅ Vendor confirmed!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to confirm vendor")
+                        try:
+                            result = db.add_certification(
+                                vendor_id,
+                                CURRENT_CYCLE,
+                                current_user,
+                                "confirmed",
+                                confirm_comments
+                            )
+                            if result:
+                                st.success("✅ Vendor confirmed!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Failed to confirm vendor {vendor_id}. Check debug logs for details.")
+                        except Exception as e:
+                            st.error(f"❌ Error confirming vendor: {str(e)}")
                 
                 # Edit request action
                 st.write("**📝 Request Edit**")
@@ -568,18 +571,21 @@ def page_hod_dashboard():
                     edit_comments = st.text_input(f"Edit request reason ({vendor_id})", value="", key=f"edit_text_{vendor_id}")
                 with col_e2:
                     if st.button("Request", key=f"btn_edit_{vendor_id}"):
-                        result = db.add_certification(
-                            vendor_id,
-                            CURRENT_CYCLE,
-                            current_user,
-                            "edit_requested",
-                            edit_comments
-                        )
-                        if result:
-                            st.success("📝 Edit request submitted!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to submit edit request")
+                        try:
+                            result = db.add_certification(
+                                vendor_id,
+                                CURRENT_CYCLE,
+                                current_user,
+                                "edit_requested",
+                                edit_comments
+                            )
+                            if result:
+                                st.success("📝 Edit request submitted!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Failed to submit edit request for {vendor_id}. Check debug logs for details.")
+                        except Exception as e:
+                            st.error(f"❌ Error submitting edit request: {str(e)}")
                 
                 # Flag issue action
                 st.write("**🚩 Flag Issue**")
@@ -588,18 +594,21 @@ def page_hod_dashboard():
                     flag_comments = st.text_input(f"Issue details ({vendor_id})", value="", key=f"flag_text_{vendor_id}")
                 with col_f2:
                     if st.button("Flag", key=f"btn_flag_{vendor_id}"):
-                        result = db.add_certification(
-                            vendor_id,
-                            CURRENT_CYCLE,
-                            current_user,
-                            "issue_flagged",
-                            flag_comments
-                        )
-                        if result:
-                            st.success("🚩 Issue flagged!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to flag issue")
+                        try:
+                            result = db.add_certification(
+                                vendor_id,
+                                CURRENT_CYCLE,
+                                current_user,
+                                "issue_flagged",
+                                flag_comments
+                            )
+                            if result:
+                                st.success("🚩 Issue flagged!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Failed to flag issue for {vendor_id}. Check debug logs for details.")
+                        except Exception as e:
+                            st.error(f"❌ Error flagging issue: {str(e)}")
         except Exception as e:
             st.error(f"Error displaying vendor: {e}")
             import traceback

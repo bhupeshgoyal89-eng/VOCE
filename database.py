@@ -517,8 +517,18 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            print(f"DEBUG add_certification: vendor_id={vendor_id}, cycle={certification_cycle}, hod_email={hod_email}, status={status}, comments={comments}")
+            print(f"DEBUG add_certification: vendor_id={vendor_id}, cycle={certification_cycle}, hod_email={hod_email}, status={status}")
             
+            # First verify vendor exists
+            cursor.execute("SELECT vendor_id FROM vendors WHERE vendor_id = ?", (vendor_id,))
+            vendor_check = cursor.fetchone()
+            print(f"DEBUG add_certification: vendor_check = {vendor_check}")
+            
+            if not vendor_check:
+                print(f"ERROR: Vendor {vendor_id} does not exist in database")
+                return False
+            
+            # Check for existing certification
             cursor.execute(
                 "SELECT id FROM certifications WHERE vendor_id = ? AND certification_cycle = ?",
                 (vendor_id, certification_cycle)
@@ -528,24 +538,35 @@ class Database:
             
             if existing:
                 print(f"DEBUG add_certification: Updating existing record id={existing[0]}")
-                cursor.execute("""
-                    UPDATE certifications 
-                    SET hod_email = ?, status = ?, comments = ?, timestamp = ?
-                    WHERE id = ?
-                """, (hod_email, status, comments, datetime.now(), existing[0]))
-                print(f"DEBUG add_certification: Updated rows: {cursor.rowcount}")
+                try:
+                    cursor.execute("""
+                        UPDATE certifications 
+                        SET hod_email = ?, status = ?, comments = ?, timestamp = ?
+                        WHERE id = ?
+                    """, (hod_email, status, comments, datetime.now(), existing[0]))
+                    conn.commit()
+                    print(f"DEBUG add_certification: Updated successfully, rows: {cursor.rowcount}")
+                except sqlite3.IntegrityError as e:
+                    print(f"ERROR: IntegrityError during UPDATE: {e}")
+                    conn.rollback()
+                    return False
             else:
                 print(f"DEBUG add_certification: Inserting new record")
-                cursor.execute("""
-                    INSERT INTO certifications 
-                    (vendor_id, certification_cycle, hod_email, status, comments, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (vendor_id, certification_cycle, hod_email, status, comments, datetime.now()))
-                print(f"DEBUG add_certification: Inserted rows: {cursor.rowcount}")
+                try:
+                    cursor.execute("""
+                        INSERT INTO certifications 
+                        (vendor_id, certification_cycle, hod_email, status, comments, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (vendor_id, certification_cycle, hod_email, status, comments, datetime.now()))
+                    conn.commit()
+                    print(f"DEBUG add_certification: Inserted successfully, rows: {cursor.rowcount}")
+                except sqlite3.IntegrityError as e:
+                    print(f"ERROR: IntegrityError during INSERT: {e}")
+                    conn.rollback()
+                    return False
             
-            conn.commit()
-            print(f"DEBUG add_certification: Commit successful")
             conn.close()
+            print(f"DEBUG add_certification: Success - returning True")
             return True
         except Exception as e:
             print(f"Error adding certification: {e}")
