@@ -605,7 +605,7 @@ class Database:
                 
                 if has_timestamp:
                     set_parts.append("timestamp = ?")
-                    params.append(datetime.now())
+                    params.append(datetime.now().isoformat())
                 
                 params.append(existing[0])  # for WHERE clause
                 
@@ -643,7 +643,7 @@ class Database:
                 
                 if has_timestamp:
                     insert_cols.append('timestamp')
-                    insert_vals.append(datetime.now())
+                    insert_vals.append(datetime.now().isoformat())
                 
                 placeholders = ', '.join(['?' for _ in insert_vals])
                 insert_sql = f"INSERT INTO certifications ({', '.join(insert_cols)}) VALUES ({placeholders})"
