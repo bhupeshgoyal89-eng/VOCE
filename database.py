@@ -483,66 +483,123 @@ class Database:
 
     def get_all_certifications(self, cycle: str = None) -> pd.DataFrame:
         """Get all certifications, optionally filtered by cycle"""
-        conn = self.get_connection()
-        if cycle:
-            df = pd.read_sql_query("""
-                SELECT 
-                    c.id,
-                    c.vendor_id,
-                    v.vendor_name,
-                    v.department,
-                    v.owner_email,
-                    c.certification_cycle,
-                    c.hod_email,
-                    c.status,
-                    c.comments,
-                    c.timestamp
-                FROM certifications c
-                LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
-                WHERE c.certification_cycle = ?
-                ORDER BY c.timestamp DESC
-            """, conn, params=(cycle,))
-        else:
-            df = pd.read_sql_query("""
-                SELECT 
-                    c.id,
-                    c.vendor_id,
-                    v.vendor_name,
-                    v.department,
-                    v.owner_email,
-                    c.certification_cycle,
-                    c.hod_email,
-                    c.status,
-                    c.comments,
-                    c.timestamp
-                FROM certifications c
-                LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
-                ORDER BY c.certification_cycle DESC, c.timestamp DESC
-            """, conn)
-        conn.close()
-        return df
+        try:
+            conn = self.get_connection()
+            
+            # Check if certification_cycle column exists
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(certifications)")
+            cert_cols = {row[1] for row in cursor.fetchall()}
+            
+            if 'certification_cycle' in cert_cols:
+                # New schema with cycles
+                if cycle:
+                    df = pd.read_sql_query("""
+                        SELECT 
+                            c.id,
+                            c.vendor_id,
+                            v.vendor_name,
+                            v.department,
+                            v.owner_email,
+                            c.certification_cycle,
+                            c.hod_email,
+                            c.status,
+                            c.comments,
+                            c.timestamp
+                        FROM certifications c
+                        LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
+                        WHERE c.certification_cycle = ?
+                        ORDER BY c.timestamp DESC
+                    """, conn, params=(cycle,))
+                else:
+                    df = pd.read_sql_query("""
+                        SELECT 
+                            c.id,
+                            c.vendor_id,
+                            v.vendor_name,
+                            v.department,
+                            v.owner_email,
+                            c.certification_cycle,
+                            c.hod_email,
+                            c.status,
+                            c.comments,
+                            c.timestamp
+                        FROM certifications c
+                        LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
+                        ORDER BY c.certification_cycle DESC, c.timestamp DESC
+                    """, conn)
+            else:
+                # Old schema without cycles - return basic certifications
+                df = pd.read_sql_query("""
+                    SELECT 
+                        c.certification_id as id,
+                        c.vendor_id,
+                        v.vendor_name,
+                        v.department,
+                        v.owner_email,
+                        c.status,
+                        c.comments,
+                        c.timestamp
+                    FROM certifications c
+                    LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
+                    ORDER BY c.timestamp DESC
+                """, conn)
+            
+            conn.close()
+            return df if not df.empty else pd.DataFrame()
+        except Exception as e:
+            print(f"Error getting certifications: {e}")
+            return pd.DataFrame()
 
     def get_certifications_by_hod(self, hod_email: str, cycle: str) -> pd.DataFrame:
         """Get certifications for a specific HoD in a cycle"""
-        conn = self.get_connection()
-        df = pd.read_sql_query("""
-            SELECT 
-                c.id,
-                c.vendor_id,
-                v.vendor_name,
-                v.department,
-                c.certification_cycle,
-                c.hod_email,
-                c.status,
-                c.comments,
-                c.timestamp
-            FROM certifications c
-            LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
-            WHERE c.hod_email = ? AND c.certification_cycle = ?
-            ORDER BY c.timestamp DESC
-        """, conn, params=(hod_email, cycle))
-        conn.close()
-        return df
+        try:
+            conn = self.get_connection()
+            
+            # Check if hod_email column exists
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(certifications)")
+            cert_cols = {row[1] for row in cursor.fetchall()}
+            
+            if 'hod_email' in cert_cols and 'certification_cycle' in cert_cols:
+                # New schema
+                df = pd.read_sql_query("""
+                    SELECT 
+                        c.id,
+                        c.vendor_id,
+                        v.vendor_name,
+                        v.department,
+                        c.certification_cycle,
+                        c.hod_email,
+                        c.status,
+                        c.comments,
+                        c.timestamp
+                    FROM certifications c
+                    LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
+                    WHERE c.hod_email = ? AND c.certification_cycle = ?
+                    ORDER BY c.timestamp DESC
+                """, conn, params=(hod_email, cycle))
+            else:
+                # Old schema - can't filter by hod_email or cycle
+                df = pd.read_sql_query("""
+                    SELECT 
+                        c.certification_id as id,
+                        c.vendor_id,
+                        v.vendor_name,
+                        v.department,
+                        c.status,
+                        c.comments,
+                        c.timestamp
+                    FROM certifications c
+                    LEFT JOIN vendors v ON c.vendor_id = v.vendor_id
+                    ORDER BY c.timestamp DESC
+                """, conn)
+            
+            conn.close()
+            return df if not df.empty else pd.DataFrame()
+        except Exception as e:
+            print(f"Error getting HoD certifications: {e}")
+            return pd.DataFrame()
 
     def get_certification_status_summary(self, cycle: str = None) -> Dict[str, int]:
         """Get certification status summary"""

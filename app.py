@@ -645,14 +645,25 @@ def page_fpa_dashboard():
         filtered_certs = filtered_certs[filtered_certs['status'].isin(selected_status)]
     
     if not filtered_certs.empty:
-        st.dataframe(
-            filtered_certs[[
-                'vendor_id', 'vendor_name', 'department', 'owner_email',
-                'certification_cycle', 'status', 'comments', 'timestamp'
-            ]].sort_values('timestamp', ascending=False),
-            use_container_width=True,
-            hide_index=True
-        )
+        # Only select columns that exist
+        available_cols = [col for col in [
+            'vendor_id', 'vendor_name', 'department', 'owner_email',
+            'certification_cycle', 'status', 'comments', 'timestamp'
+        ] if col in filtered_certs.columns]
+        
+        if available_cols:
+            st.dataframe(
+                filtered_certs[available_cols].sort_values('timestamp', ascending=False) if 'timestamp' in available_cols else filtered_certs[available_cols],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            # Fallback: show all available columns
+            st.dataframe(
+                filtered_certs.sort_values('timestamp', ascending=False) if 'timestamp' in filtered_certs.columns else filtered_certs,
+                use_container_width=True,
+                hide_index=True
+            )
     else:
         st.info("No certifications found")
 
