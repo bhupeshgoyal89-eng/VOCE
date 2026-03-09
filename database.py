@@ -528,22 +528,74 @@ class Database:
                 print(f"ERROR: Vendor {vendor_id} does not exist in database")
                 return False
             
+            # Check if certifications table has 'id' column (new schema) or 'certification_id' (old schema)
+            cursor.execute("PRAGMA table_info(certifications)")
+            cert_cols = {row[1] for row in cursor.fetchall()}
+            print(f"DEBUG add_certification: cert_cols = {cert_cols}")
+            
+            has_id = 'id' in cert_cols
+            has_cert_id = 'certification_id' in cert_cols
+            has_cycle = 'certification_cycle' in cert_cols
+            has_hod = 'hod_email' in cert_cols
+            
+            print(f"DEBUG: has_id={has_id}, has_cert_id={has_cert_id}, has_cycle={has_cycle}, has_hod={has_hod}")
+            
             # Check for existing certification
-            cursor.execute(
-                "SELECT id FROM certifications WHERE vendor_id = ? AND certification_cycle = ?",
-                (vendor_id, certification_cycle)
-            )
+            if has_cycle:
+                # New schema - can query by cycle
+                query = "SELECT "
+                if has_id:
+                    query += "id"
+                elif has_cert_id:
+                    query += "certification_id"
+                else:
+                    query += "rowid"
+                query += " FROM certifications WHERE vendor_id = ? AND certification_cycle = ?"
+                cursor.execute(query, (vendor_id, certification_cycle))
+            else:
+                # Old schema - just query by vendor_id
+                query = "SELECT "
+                if has_cert_id:
+                    query += "certification_id"
+                elif has_id:
+                    query += "id"
+                else:
+                    query += "rowid"
+                query += " FROM certifications WHERE vendor_id = ?"
+                cursor.execute(query, (vendor_id,))
+            
             existing = cursor.fetchone()
             print(f"DEBUG add_certification: existing record = {existing}")
             
             if existing:
                 print(f"DEBUG add_certification: Updating existing record id={existing[0]}")
+                # Determine which primary key to use
+                pk_col = 'id' if has_id else ('certification_id' if has_cert_id else 'rowid')
+                
+                # Build UPDATE statement with available columns
+                update_parts = []
+                update_params = []
+                
+                if has_hod:
+                    update_parts.append("hod_email = ?")
+                    update_params.append(hod_email)
+                
+                update_parts.append("status = ?")
+                update_params.append(status)
+                
+                if comments:
+                    update_parts.append("comments = ?")
+                    update_params.append(comments)
+                
+                update_parts.append("timestamp = ?")
+                update_params.append(datetime.now())
+                update_params.append(existing[0])  # for WHERE clause
+                
+                update_sql = f"UPDATE certifications SET {', '.join(update_parts)} WHERE {pk_col} = ?"
+                print(f"DEBUG: update_sql = {update_sql}")
+                
                 try:
-                    cursor.execute("""
-                        UPDATE certifications 
-                        SET hod_email = ?, status = ?, comments = ?, timestamp = ?
-                        WHERE id = ?
-                    """, (hod_email, status, comments, datetime.now(), existing[0]))
+                    cursor.execute(update_sql, update_params)
                     conn.commit()
                     print(f"DEBUG add_certification: Updated successfully, rows: {cursor.rowcount}")
                 except sqlite3.IntegrityError as e:
@@ -552,12 +604,35 @@ class Database:
                     return False
             else:
                 print(f"DEBUG add_certification: Inserting new record")
+                # Build INSERT statement with available columns
+                insert_cols = ['vendor_id', 'status']
+                insert_vals = [vendor_id, status]
+                insert_params = ['?', '?']
+                
+                if has_cycle:
+                    insert_cols.append('certification_cycle')
+                    insert_vals.append(certification_cycle)
+                    insert_params.append('?')
+                
+                if has_hod:
+                    insert_cols.append('hod_email')
+                    insert_vals.append(hod_email)
+                    insert_params.append('?')
+                
+                if comments:
+                    insert_cols.append('comments')
+                    insert_vals.append(comments)
+                    insert_params.append('?')
+                
+                insert_cols.append('timestamp')
+                insert_vals.append(datetime.now())
+                insert_params.append('?')
+                
+                insert_sql = f"INSERT INTO certifications ({', '.join(insert_cols)}) VALUES ({', '.join(insert_params)})"
+                print(f"DEBUG: insert_sql = {insert_sql}")
+                
                 try:
-                    cursor.execute("""
-                        INSERT INTO certifications 
-                        (vendor_id, certification_cycle, hod_email, status, comments, timestamp)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (vendor_id, certification_cycle, hod_email, status, comments, datetime.now()))
+                    cursor.execute(insert_sql, insert_vals)
                     conn.commit()
                     print(f"DEBUG add_certification: Inserted successfully, rows: {cursor.rowcount}")
                 except sqlite3.IntegrityError as e:
