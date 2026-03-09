@@ -517,30 +517,40 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor()
             
+            print(f"DEBUG add_certification: vendor_id={vendor_id}, cycle={certification_cycle}, hod_email={hod_email}, status={status}, comments={comments}")
+            
             cursor.execute(
                 "SELECT id FROM certifications WHERE vendor_id = ? AND certification_cycle = ?",
                 (vendor_id, certification_cycle)
             )
             existing = cursor.fetchone()
+            print(f"DEBUG add_certification: existing record = {existing}")
             
             if existing:
+                print(f"DEBUG add_certification: Updating existing record id={existing[0]}")
                 cursor.execute("""
                     UPDATE certifications 
                     SET hod_email = ?, status = ?, comments = ?, timestamp = ?
                     WHERE id = ?
                 """, (hod_email, status, comments, datetime.now(), existing[0]))
+                print(f"DEBUG add_certification: Updated rows: {cursor.rowcount}")
             else:
+                print(f"DEBUG add_certification: Inserting new record")
                 cursor.execute("""
                     INSERT INTO certifications 
                     (vendor_id, certification_cycle, hod_email, status, comments, timestamp)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (vendor_id, certification_cycle, hod_email, status, comments, datetime.now()))
+                print(f"DEBUG add_certification: Inserted rows: {cursor.rowcount}")
             
             conn.commit()
+            print(f"DEBUG add_certification: Commit successful")
             conn.close()
             return True
         except Exception as e:
             print(f"Error adding certification: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def get_certification_by_vendor_cycle(self, vendor_id: str, cycle: str) -> Optional[Dict[str, Any]]:
@@ -638,9 +648,11 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(certifications)")
             cert_cols = {row[1] for row in cursor.fetchall()}
+            print(f"DEBUG get_certifications_by_hod: Available cert columns: {cert_cols}")
             
             if 'hod_email' in cert_cols and 'certification_cycle' in cert_cols:
                 # New schema
+                print(f"DEBUG get_certifications_by_hod: Using new schema, querying hod_email={hod_email}, cycle={cycle}")
                 df = pd.read_sql_query("""
                     SELECT 
                         c.id,
@@ -657,8 +669,10 @@ class Database:
                     WHERE c.hod_email = ? AND c.certification_cycle = ?
                     ORDER BY c.timestamp DESC
                 """, conn, params=(hod_email, cycle))
+                print(f"DEBUG get_certifications_by_hod: Found {len(df)} records")
             else:
                 # Old schema - can't filter by hod_email or cycle
+                print(f"DEBUG get_certifications_by_hod: Using old schema, returning all certifications")
                 df = pd.read_sql_query("""
                     SELECT 
                         c.certification_id as id,

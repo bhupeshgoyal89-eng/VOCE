@@ -538,53 +538,72 @@ def page_hod_dashboard():
                     else:
                         st.write("Status: ⏳ Pending")
                 
-                # Action buttons
+                # Action buttons - simplified flow
                 st.write("**Take Action**")
-                col1, col2, col3 = st.columns(3)
                 
-                with col1:
-                    if st.button("✅ Confirm", key=f"confirm_{vendor_id}"):
-                        comments = st.text_input(f"Comments for {vendor_name}", key=f"comments_confirm_{vendor_id}")
-                        if st.button("Submit Confirmation", key=f"submit_confirm_{vendor_id}"):
-                            if db.add_certification(
-                                vendor_id,
-                                CURRENT_CYCLE,
-                                current_user,
-                                "confirmed",
-                                comments
-                            ):
-                                st.success("✅ Vendor confirmed!")
-                                st.rerun()
+                # Confirm action
+                st.write("**✅ Confirm Vendor**")
+                col_c1, col_c2 = st.columns([3, 1])
+                with col_c1:
+                    confirm_comments = st.text_input(f"Comments (confirm {vendor_id})", value="", key=f"confirm_text_{vendor_id}")
+                with col_c2:
+                    if st.button("Confirm", key=f"btn_confirm_{vendor_id}"):
+                        result = db.add_certification(
+                            vendor_id,
+                            CURRENT_CYCLE,
+                            current_user,
+                            "confirmed",
+                            confirm_comments
+                        )
+                        if result:
+                            st.success("✅ Vendor confirmed!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to confirm vendor")
                 
-                with col2:
-                    if st.button("📝 Request Edit", key=f"edit_{vendor_id}"):
-                        comments = st.text_input(f"Edit request for {vendor_name}", key=f"comments_edit_{vendor_id}")
-                        if st.button("Submit Edit Request", key=f"submit_edit_{vendor_id}"):
-                            if db.add_certification(
-                                vendor_id,
-                                CURRENT_CYCLE,
-                                current_user,
-                                "edit_requested",
-                                comments
-                            ):
-                                st.success("📝 Edit request submitted!")
-                                st.rerun()
+                # Edit request action
+                st.write("**📝 Request Edit**")
+                col_e1, col_e2 = st.columns([3, 1])
+                with col_e1:
+                    edit_comments = st.text_input(f"Edit request reason ({vendor_id})", value="", key=f"edit_text_{vendor_id}")
+                with col_e2:
+                    if st.button("Request", key=f"btn_edit_{vendor_id}"):
+                        result = db.add_certification(
+                            vendor_id,
+                            CURRENT_CYCLE,
+                            current_user,
+                            "edit_requested",
+                            edit_comments
+                        )
+                        if result:
+                            st.success("📝 Edit request submitted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to submit edit request")
                 
-                with col3:
-                    if st.button("🚩 Flag Issue", key=f"flag_{vendor_id}"):
-                        comments = st.text_input(f"Issue for {vendor_name}", key=f"comments_flag_{vendor_id}")
-                        if st.button("Submit Flag", key=f"submit_flag_{vendor_id}"):
-                            if db.add_certification(
-                                vendor_id,
-                                CURRENT_CYCLE,
-                                current_user,
-                                "issue_flagged",
-                                comments
-                            ):
-                                st.success("🚩 Issue flagged!")
-                                st.rerun()
+                # Flag issue action
+                st.write("**🚩 Flag Issue**")
+                col_f1, col_f2 = st.columns([3, 1])
+                with col_f1:
+                    flag_comments = st.text_input(f"Issue details ({vendor_id})", value="", key=f"flag_text_{vendor_id}")
+                with col_f2:
+                    if st.button("Flag", key=f"btn_flag_{vendor_id}"):
+                        result = db.add_certification(
+                            vendor_id,
+                            CURRENT_CYCLE,
+                            current_user,
+                            "issue_flagged",
+                            flag_comments
+                        )
+                        if result:
+                            st.success("🚩 Issue flagged!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to flag issue")
         except Exception as e:
             st.error(f"Error displaying vendor: {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
     # Summary
