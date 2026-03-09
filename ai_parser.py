@@ -7,11 +7,13 @@ import os
 import json
 import logging
 from typing import Optional, Dict, Any
-import google.generativeai as genai
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Note: google.generativeai is imported later to avoid import errors when running diagnostics
+import google.generativeai as genai
 
 
 def get_gemini_api_key():
@@ -19,6 +21,8 @@ def get_gemini_api_key():
     Get Gemini API key from either:
     1. Streamlit Secrets (st.secrets) - for Streamlit Cloud
     2. Environment variable (os.getenv) - for local/Docker
+    
+    Note: Streamlit Secrets must be accessed at runtime, not at import time
     """
     api_key = None
     source = None
@@ -31,23 +35,30 @@ def get_gemini_api_key():
         logger.info(f"DEBUG: API key found in environment variable")
     
     # Try Streamlit Secrets (for Streamlit Cloud - overrides env var)
+    # This MUST be called at runtime, not at module import time
     try:
         import streamlit as st
         logger.debug(f"DEBUG: Checking for st.secrets...")
-        if hasattr(st, 'secrets'):
-            logger.debug(f"DEBUG: st.secrets exists, checking for GEMINI_API_KEY...")
-            secrets_dict = dict(st.secrets)
-            logger.debug(f"DEBUG: Available secrets keys: {list(secrets_dict.keys())}")
-            if 'GEMINI_API_KEY' in secrets_dict:
-                api_key = secrets_dict['GEMINI_API_KEY']
-                source = "Streamlit Secrets"
+        
+        # Access secrets - this will only work within Streamlit runtime
+        try:
+            if 'GEMINI_API_KEY' in st.secrets:
+                api_key = st.secrets['GEMINI_API_KEY']
+                source = "Streamlit Secrets (st.secrets)"
                 logger.info(f"DEBUG: API key loaded from Streamlit Secrets (OVERRIDING env var)")
+                logger.info(f"DEBUG: Secret key type: {type(api_key)}, length: {len(api_key) if api_key else 'None'}")
             else:
                 logger.warning(f"DEBUG: GEMINI_API_KEY not in st.secrets")
-        else:
-            logger.debug(f"DEBUG: st.secrets not available")
+                logger.debug(f"DEBUG: Available secrets: {list(st.secrets.keys())}")
+        except KeyError as e:
+            logger.warning(f"DEBUG: KeyError accessing st.secrets: {e}")
+        except Exception as e:
+            logger.warning(f"DEBUG: Exception accessing st.secrets: {type(e).__name__}: {e}")
+            
+    except ImportError:
+        logger.debug(f"DEBUG: Streamlit not imported (OK for non-Streamlit contexts)")
     except Exception as e:
-        logger.debug(f"DEBUG: Error checking Streamlit Secrets: {type(e).__name__}: {e}")
+        logger.debug(f"DEBUG: Error with Streamlit import: {type(e).__name__}: {e}")
     
     if api_key:
         logger.info(f"DEBUG: Using API key from {source} - Length: {len(api_key)}, First 10 chars: {api_key[:10]}...")
