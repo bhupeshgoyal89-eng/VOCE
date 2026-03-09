@@ -314,10 +314,29 @@ def page_agreement_upload():
     st.markdown("Upload agreement documents for processing and obligation extraction.")
     
     db = get_database()
-    gemini_parser = get_gemini_parser()
     
-    if not is_gemini_configured():
-        st.warning("⚠️ Gemini API not configured. Obligation extraction will not work.")
+    # Check Gemini configuration first
+    api_key = get_gemini_api_key()
+    is_configured = is_gemini_configured()
+    
+    if not is_configured:
+        st.error("❌ Gemini API not configured!")
+        st.warning("GEMINI_API_KEY not found in Streamlit Secrets or environment variables")
+        st.info("Please add GEMINI_API_KEY to Streamlit Cloud Secrets to enable obligation extraction")
+        if api_key:
+            st.debug(f"DEBUG: API key found but checking failed: {api_key[:10]}...")
+        else:
+            st.debug("DEBUG: No API key found anywhere")
+        return
+    
+    st.success("✅ Gemini API is configured and ready")
+    
+    # Initialize Gemini parser
+    gemini_parser = get_gemini_parser()
+    if gemini_parser is None:
+        st.error("❌ Failed to initialize Gemini parser")
+        st.error("Check Streamlit Cloud logs for details")
+        return
     
     # Get vendors
     vendors_df = db.get_all_vendors()

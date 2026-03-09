@@ -20,20 +20,39 @@ def get_gemini_api_key():
     1. Streamlit Secrets (st.secrets) - for Streamlit Cloud
     2. Environment variable (os.getenv) - for local/Docker
     """
-    try:
-        # Try Streamlit Secrets first (for Streamlit Cloud)
-        import streamlit as st
-        if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
-            api_key = st.secrets['GEMINI_API_KEY']
-            logger.info(f"DEBUG: API key loaded from Streamlit Secrets")
-            return api_key
-    except Exception as e:
-        logger.debug(f"Could not read Streamlit Secrets: {e}")
+    api_key = None
+    source = None
     
-    # Fallback to environment variable (for local/Docker)
-    api_key = os.getenv('GEMINI_API_KEY')
+    # Try environment variable first (for local/Docker)
+    env_key = os.getenv('GEMINI_API_KEY')
+    if env_key:
+        api_key = env_key
+        source = "environment variable"
+        logger.info(f"DEBUG: API key found in environment variable")
+    
+    # Try Streamlit Secrets (for Streamlit Cloud - overrides env var)
+    try:
+        import streamlit as st
+        logger.debug(f"DEBUG: Checking for st.secrets...")
+        if hasattr(st, 'secrets'):
+            logger.debug(f"DEBUG: st.secrets exists, checking for GEMINI_API_KEY...")
+            secrets_dict = dict(st.secrets)
+            logger.debug(f"DEBUG: Available secrets keys: {list(secrets_dict.keys())}")
+            if 'GEMINI_API_KEY' in secrets_dict:
+                api_key = secrets_dict['GEMINI_API_KEY']
+                source = "Streamlit Secrets"
+                logger.info(f"DEBUG: API key loaded from Streamlit Secrets (OVERRIDING env var)")
+            else:
+                logger.warning(f"DEBUG: GEMINI_API_KEY not in st.secrets")
+        else:
+            logger.debug(f"DEBUG: st.secrets not available")
+    except Exception as e:
+        logger.debug(f"DEBUG: Error checking Streamlit Secrets: {type(e).__name__}: {e}")
+    
     if api_key:
-        logger.info(f"DEBUG: API key loaded from environment variable")
+        logger.info(f"DEBUG: Using API key from {source} - Length: {len(api_key)}, First 10 chars: {api_key[:10]}...")
+    else:
+        logger.error(f"DEBUG: GEMINI_API_KEY not found anywhere!")
     
     return api_key
 
