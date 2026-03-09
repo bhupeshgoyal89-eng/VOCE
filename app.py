@@ -12,7 +12,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import logging
 from io import StringIO
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 from database import Database
 from agreement_parser import AgreementParser
@@ -296,10 +301,14 @@ def page_agreement_upload():
                     # Extract obligations with Gemini
                     if gemini_parser and is_gemini_configured():
                         st.write("Analyzing obligations with Gemini AI...")
+                        logger.info(f"Calling Gemini for vendor {selected_vendor_id}...")
                         
                         obligations = gemini_parser.extract_with_fallback(
                             agreement_text
                         )
+                        
+                        logger.info(f"Gemini returned: {obligations}")
+                        st.write(f"DEBUG: {obligations}")
                         
                         # Prepare obligation data for storage
                         obligation_data = {
@@ -316,6 +325,8 @@ def page_agreement_upload():
                             'dependencies': obligations.get('dependencies'),
                             'billing_status': obligations.get('billing_status')
                         }
+                        
+                        logger.info(f"Storing obligation data: {obligation_data}")
                         
                         # Save to database
                         if db.add_obligation(obligation_data):

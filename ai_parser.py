@@ -5,8 +5,13 @@ Parses agreement text and returns structured obligation data
 
 import os
 import json
+import logging
 from typing import Optional, Dict, Any
 import google.generativeai as genai
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class GeminiObligationParser:
@@ -18,8 +23,10 @@ class GeminiObligationParser:
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set")
         
+        logger.info(f"Initializing Gemini with API key: {api_key[:10]}...")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel("gemini-1.5-flash")
+        logger.info("Gemini model initialized successfully")
 
     def extract_obligations(self, agreement_text: str) -> Optional[Dict[str, Any]]:
         """
@@ -63,6 +70,7 @@ Be concise and extract only relevant information from the agreement.
 """
         
         try:
+            logger.debug(f"Sending request to Gemini API with {len(agreement_text)} characters")
             response = self.model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
@@ -72,14 +80,18 @@ Be concise and extract only relevant information from the agreement.
             )
             
             if not response.text:
+                logger.error("Empty response from Gemini API")
                 return None
+            
+            logger.debug(f"Gemini response: {response.text[:500]}...")
             
             # Parse JSON response
             parsed = self._parse_json_response(response.text)
+            logger.info(f"Successfully parsed obligations: {list(parsed.keys()) if parsed else 'None'}")
             return parsed
             
         except Exception as e:
-            print(f"Error calling Gemini API: {e}")
+            logger.error(f"Error calling Gemini API: {e}", exc_info=True)
             return None
 
     @staticmethod
@@ -95,33 +107,41 @@ Be concise and extract only relevant information from the agreement.
         """
         try:
             # Try direct JSON parsing first
-            return json.loads(response_text)
+            logger.debug("Attempting direct JSON parse...")
+            result = json.loads(response_text)
+            logger.info("Successfully parsed JSON directly")
+            return result
         except json.JSONDecodeError:
-            pass
+            logger.debug("Direct JSON parse failed, trying markdown blocks...")
         
         # Try to extract JSON from markdown code blocks
         try:
             if '```json' in response_text:
                 json_str = response_text.split('```json')[1].split('```')[0].strip()
+                logger.debug("Extracted JSON from markdown code block")
                 return json.loads(json_str)
             elif '```' in response_text:
                 json_str = response_text.split('```')[1].split('```')[0].strip()
+                logger.debug("Extracted JSON from generic code block")
                 return json.loads(json_str)
-        except (IndexError, json.JSONDecodeError):
-            pass
+        except (IndexError, json.JSONDecodeError) as e:
+            logger.debug(f"Markdown block extraction failed: {e}")
         
         # Try to extract JSON object from response
         try:
+            logger.debug("Attempting to extract JSON object from response...")
             start_idx = response_text.find('{')
             end_idx = response_text.rfind('}') + 1
             
             if start_idx != -1 and end_idx > start_idx:
                 json_str = response_text[start_idx:end_idx]
+                logger.debug(f"Found JSON between positions {start_idx}-{end_idx}")
                 return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug(f"JSON object extraction failed: {e}")
         
-        print("Warning: Could not parse Gemini response as JSON")
+        logger.error("Could not parse Gemini response as JSON")
+        logger.error(f"Response text: {response_text[:200]}...")
         return None
 
     def extract_with_fallback(self, agreement_text: str) -> Dict[str, Any]:
@@ -134,9 +154,11 @@ Be concise and extract only relevant information from the agreement.
         Returns:
             Obligations dictionary with parsed data or empty fields
         """
+        logger.info("Starting obligation extraction with fallback...")
         result = self.extract_obligations(agreement_text)
         
         if result is None:
+            logger.warning("Extraction failed, returning empty structure")
             # Return empty structure if extraction failed
             result = {
                 "agreement_type": None,
@@ -148,6 +170,17 @@ Be concise and extract only relevant information from the agreement.
                 "servicing_obligations": None,
                 "kpis_or_volume_commitments": None,
                 "data_security_protocols": None,
+                "payment_obligations": None,
+                "milestone_completion": None,
+                "dependencies": None,
+                "billing_status": None
+            }
+        else:
+            logger.info(f"Extraction successful. Fields extracted:")
+            for key, value in result.items():
+                logger.info(f"  {key}: {str(value)[:100] if value else 'None'}")
+        
+        return result
                 "payment_obligations": None,
                 "milestone_completion": None,
                 "dependencies": None,
