@@ -229,12 +229,14 @@ def page_vendor_master():
             search_vendor = st.text_input("Search vendor name", "")
         
         with col2:
-            departments = ["All"] + db.get_unique_departments()
-            selected_dept = st.selectbox("Filter by department", departments)
+            departments = db.get_unique_departments()
+            dept_options = ["All"] + (departments if departments else [])
+            selected_dept = st.selectbox("Filter by department", dept_options)
         
         with col3:
-            owners = ["All"] + db.get_unique_owners()
-            selected_owner = st.selectbox("Filter by owner", owners)
+            owners = db.get_unique_owners()
+            owner_options = ["All"] + (owners if owners else [])
+            selected_owner = st.selectbox("Filter by owner", owner_options)
         
         # Get vendors
         vendors_df = db.get_all_vendors()
@@ -438,12 +440,13 @@ def page_obligation_register():
         search_term = st.text_input("Search obligations", "")
     
     with col2:
-        departments = ["All"] + db.get_unique_departments()
-        selected_dept = st.selectbox("Filter by department", departments)
+        departments = db.get_unique_departments()
+        dept_options = ["All"] + (departments if departments else [])
+        selected_dept = st.selectbox("Filter by department", dept_options)
     
     with col3:
         vendors_df = db.get_all_vendors()
-        vendor_names = ["All"] + vendors_df['vendor_name'].tolist()
+        vendor_names = ["All"] + (vendors_df['vendor_name'].tolist() if not vendors_df.empty else [])
         selected_vendor = st.selectbox("Filter by vendor", vendor_names)
     
     # Get obligations

@@ -194,21 +194,37 @@ class Database:
 
     def get_unique_departments(self) -> List[str]:
         """Get list of unique departments"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT department FROM vendors ORDER BY department")
-        departments = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return departments
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT department FROM vendors WHERE department IS NOT NULL ORDER BY department")
+            departments = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return departments if departments else []
+        except Exception as e:
+            print(f"Error getting unique departments: {e}")
+            return []
 
     def get_unique_owners(self) -> List[str]:
         """Get list of unique owner emails"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT owner_email FROM vendors ORDER BY owner_email")
-        owners = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return owners
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Try owner_email first (new schema), fall back to owner (old schema)
+            try:
+                cursor.execute("SELECT DISTINCT owner_email FROM vendors WHERE owner_email IS NOT NULL ORDER BY owner_email")
+                owners = [row[0] for row in cursor.fetchall()]
+            except:
+                # Fallback to old schema
+                cursor.execute("SELECT DISTINCT owner FROM vendors WHERE owner IS NOT NULL ORDER BY owner")
+                owners = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+            return owners if owners else []
+        except Exception as e:
+            print(f"Error getting unique owners: {e}")
+            return []
 
     # ============ AGREEMENT OPERATIONS ============
     
