@@ -718,7 +718,7 @@ class Database:
                 if cycle:
                     df = pd.read_sql_query("""
                         SELECT 
-                            c.id,
+                            c.certification_id as id,
                             c.vendor_id,
                             v.vendor_name,
                             v.department,
@@ -736,7 +736,7 @@ class Database:
                 else:
                     df = pd.read_sql_query("""
                         SELECT 
-                            c.id,
+                            c.certification_id as id,
                             c.vendor_id,
                             v.vendor_name,
                             v.department,
@@ -789,7 +789,7 @@ class Database:
                 print(f"DEBUG get_certifications_by_hod: Using new schema, querying hod_email={hod_email}, cycle={cycle}")
                 df = pd.read_sql_query("""
                     SELECT 
-                        c.id,
+                        c.certification_id as id,
                         c.vendor_id,
                         v.vendor_name,
                         v.department,
