@@ -496,7 +496,11 @@ def page_hod_dashboard():
     current_user = st.session_state.current_user_email
     
     # Get vendors assigned to this HoD
-    hod_vendors = db.get_vendors_by_owner(current_user)
+    try:
+        hod_vendors = db.get_vendors_by_owner(current_user)
+    except Exception as e:
+        st.error(f"Error loading vendors: {e}")
+        return
     
     if hod_vendors.empty:
         st.info(f"No vendors assigned to {current_user}")
@@ -506,73 +510,82 @@ def page_hod_dashboard():
     
     # Display vendors with certification actions
     for idx, vendor in hod_vendors.iterrows():
-        with st.expander(f"🏢 {vendor['vendor_name']} ({vendor['vendor_id']})"):
-            col1, col2 = st.columns(2)
+        try:
+            vendor_name = vendor.get('vendor_name', 'Unknown')
+            vendor_id = vendor.get('vendor_id', 'Unknown')
             
-            with col1:
-                st.write("**Vendor Details**")
-                st.write(f"Department: {vendor['department']}")
-                st.write(f"Nature of Expense: {vendor['nature_of_expense']}")
-                st.write(f"Recurring: {'Yes' if vendor['recurring'] else 'No'}")
-                st.write(f"Active: {'Yes' if vendor['active'] else 'No'}")
-                st.write(f"Last Contract Revision: {vendor.get('last_contract_revision_date', 'N/A')}")
-            
-            with col2:
-                st.write("**Certification Status**")
+            with st.expander(f"🏢 {vendor_name} ({vendor_id})"):
+                col1, col2 = st.columns(2)
                 
-                # Check existing certification
-                cert = db.get_certification_by_vendor_cycle(vendor['vendor_id'], CURRENT_CYCLE)
+                with col1:
+                    st.write("**Vendor Details**")
+                    st.write(f"Department: {vendor.get('department', 'N/A')}")
+                    st.write(f"Nature of Expense: {vendor.get('nature_of_expense', 'N/A')}")
+                    st.write(f"Recurring: {'Yes' if vendor.get('recurring', False) else 'No'}")
+                    st.write(f"Active: {'Yes' if vendor.get('active', False) else 'No'}")
+                    st.write(f"Last Contract Revision: {vendor.get('last_contract_revision_date', 'N/A')}")
                 
-                if cert:
-                    st.write(f"Status: {STATUS_LABELS.get(cert['status'], cert['status'])}")
-                    st.write(f"Comments: {cert['comments'] or 'None'}")
-                    st.write(f"Last Updated: {cert['timestamp']}")
-                else:
-                    st.write("Status: ⏳ Pending")
-            
-            # Action buttons
-            st.write("**Take Action**")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("✅ Confirm", key=f"confirm_{vendor['vendor_id']}"):
-                    if db.add_certification(
-                        vendor['vendor_id'],
-                        CURRENT_CYCLE,
-                        current_user,
-                        "confirmed",
-                        st.text_input(f"Comments for {vendor['vendor_name']}", key=f"comments_confirm_{vendor['vendor_id']}")
-                    ):
-                        st.success("✅ Vendor confirmed!")
-                        st.rerun()
-            
-            with col2:
-                if st.button("📝 Request Edit", key=f"edit_{vendor['vendor_id']}"):
-                    comments = st.text_input(f"Edit request for {vendor['vendor_name']}", key=f"comments_edit_{vendor['vendor_id']}")
-                    if st.button("Submit Edit Request", key=f"submit_edit_{vendor['vendor_id']}"):
-                        if db.add_certification(
-                            vendor['vendor_id'],
-                            CURRENT_CYCLE,
-                            current_user,
-                            "edit_requested",
-                            comments
-                        ):
-                            st.success("📝 Edit request submitted!")
-                            st.rerun()
-            
-            with col3:
-                if st.button("🚩 Flag Issue", key=f"flag_{vendor['vendor_id']}"):
-                    comments = st.text_input(f"Issue for {vendor['vendor_name']}", key=f"comments_flag_{vendor['vendor_id']}")
-                    if st.button("Submit Flag", key=f"submit_flag_{vendor['vendor_id']}"):
-                        if db.add_certification(
-                            vendor['vendor_id'],
-                            CURRENT_CYCLE,
-                            current_user,
-                            "issue_flagged",
-                            comments
-                        ):
-                            st.success("🚩 Issue flagged!")
-                            st.rerun()
+                with col2:
+                    st.write("**Certification Status**")
+                    
+                    # Check existing certification
+                    cert = db.get_certification_by_vendor_cycle(vendor_id, CURRENT_CYCLE)
+                    
+                    if cert:
+                        st.write(f"Status: {STATUS_LABELS.get(cert['status'], cert['status'])}")
+                        st.write(f"Comments: {cert['comments'] or 'None'}")
+                        st.write(f"Last Updated: {cert['timestamp']}")
+                    else:
+                        st.write("Status: ⏳ Pending")
+                
+                # Action buttons
+                st.write("**Take Action**")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("✅ Confirm", key=f"confirm_{vendor_id}"):
+                        comments = st.text_input(f"Comments for {vendor_name}", key=f"comments_confirm_{vendor_id}")
+                        if st.button("Submit Confirmation", key=f"submit_confirm_{vendor_id}"):
+                            if db.add_certification(
+                                vendor_id,
+                                CURRENT_CYCLE,
+                                current_user,
+                                "confirmed",
+                                comments
+                            ):
+                                st.success("✅ Vendor confirmed!")
+                                st.rerun()
+                
+                with col2:
+                    if st.button("📝 Request Edit", key=f"edit_{vendor_id}"):
+                        comments = st.text_input(f"Edit request for {vendor_name}", key=f"comments_edit_{vendor_id}")
+                        if st.button("Submit Edit Request", key=f"submit_edit_{vendor_id}"):
+                            if db.add_certification(
+                                vendor_id,
+                                CURRENT_CYCLE,
+                                current_user,
+                                "edit_requested",
+                                comments
+                            ):
+                                st.success("📝 Edit request submitted!")
+                                st.rerun()
+                
+                with col3:
+                    if st.button("🚩 Flag Issue", key=f"flag_{vendor_id}"):
+                        comments = st.text_input(f"Issue for {vendor_name}", key=f"comments_flag_{vendor_id}")
+                        if st.button("Submit Flag", key=f"submit_flag_{vendor_id}"):
+                            if db.add_certification(
+                                vendor_id,
+                                CURRENT_CYCLE,
+                                current_user,
+                                "issue_flagged",
+                                comments
+                            ):
+                                st.success("🚩 Issue flagged!")
+                                st.rerun()
+        except Exception as e:
+            st.error(f"Error displaying vendor: {e}")
+            continue
     
     # Summary
     st.subheader("Certification Summary")

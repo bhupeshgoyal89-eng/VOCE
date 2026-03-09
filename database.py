@@ -183,14 +183,37 @@ class Database:
 
     def get_vendors_by_owner(self, owner_email: str) -> pd.DataFrame:
         """Get vendors assigned to a specific owner/HoD"""
-        conn = self.get_connection()
-        df = pd.read_sql_query(
-            "SELECT * FROM vendors WHERE owner_email = ? ORDER BY vendor_name",
-            conn,
-            params=(owner_email,)
-        )
-        conn.close()
-        return df
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Check which column name exists
+            cursor.execute("PRAGMA table_info(vendors)")
+            vendor_cols = {row[1] for row in cursor.fetchall()}
+            
+            if 'owner_email' in vendor_cols:
+                # New schema with owner_email
+                df = pd.read_sql_query(
+                    "SELECT * FROM vendors WHERE owner_email = ? ORDER BY vendor_name",
+                    conn,
+                    params=(owner_email,)
+                )
+            elif 'owner' in vendor_cols:
+                # Old schema with owner
+                df = pd.read_sql_query(
+                    "SELECT * FROM vendors WHERE owner = ? ORDER BY vendor_name",
+                    conn,
+                    params=(owner_email,)
+                )
+            else:
+                # No owner column at all
+                df = pd.DataFrame()
+            
+            conn.close()
+            return df if not df.empty else pd.DataFrame()
+        except Exception as e:
+            print(f"Error getting vendors by owner: {e}")
+            return pd.DataFrame()
 
     def get_unique_departments(self) -> List[str]:
         """Get list of unique departments"""
