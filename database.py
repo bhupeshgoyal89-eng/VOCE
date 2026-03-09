@@ -68,24 +68,53 @@ class Database:
             # Check if vendors table has 'owner' column (old schema)
             cursor.execute("PRAGMA table_info(vendors)")
             columns = [col[1] for col in cursor.fetchall()]
+            print(f"DEBUG migrate_schema: Current vendor columns: {columns}")
             
             if 'owner' in columns and 'owner_email' not in columns:
-                cursor.execute("ALTER TABLE vendors RENAME COLUMN owner TO owner_email")
-                conn.commit()
+                print("DEBUG migrate_schema: Migrating owner -> owner_email")
+                try:
+                    # SQLite 3.25.0+ supports RENAME COLUMN
+                    cursor.execute("ALTER TABLE vendors RENAME COLUMN owner TO owner_email")
+                    conn.commit()
+                    print("DEBUG migrate_schema: Successfully renamed owner to owner_email")
+                except Exception as e:
+                    print(f"DEBUG migrate_schema: RENAME COLUMN failed: {e}")
+                    # Fallback: create new column and copy data
+                    try:
+                        # Add new column
+                        cursor.execute("ALTER TABLE vendors ADD COLUMN owner_email TEXT")
+                        # Copy data
+                        cursor.execute("UPDATE vendors SET owner_email = owner")
+                        conn.commit()
+                        print("DEBUG migrate_schema: Added owner_email column and copied data from owner")
+                    except Exception as e2:
+                        print(f"DEBUG migrate_schema: Fallback also failed: {e2}")
             
             # Check if certifications table needs updates
             cursor.execute("PRAGMA table_info(certifications)")
             cert_columns = [col[1] for col in cursor.fetchall()]
+            print(f"DEBUG migrate_schema: Current cert columns: {cert_columns}")
             
             if 'certification_cycle' not in cert_columns:
-                cursor.execute("ALTER TABLE certifications ADD COLUMN certification_cycle TEXT DEFAULT '2026-03'")
-                conn.commit()
+                try:
+                    cursor.execute("ALTER TABLE certifications ADD COLUMN certification_cycle TEXT DEFAULT '2026-03'")
+                    conn.commit()
+                    print("DEBUG migrate_schema: Added certification_cycle column")
+                except Exception as e:
+                    print(f"DEBUG migrate_schema: Failed to add certification_cycle: {e}")
             
             if 'hod_email' not in cert_columns:
-                cursor.execute("ALTER TABLE certifications ADD COLUMN hod_email TEXT")
-                conn.commit()
+                try:
+                    cursor.execute("ALTER TABLE certifications ADD COLUMN hod_email TEXT")
+                    conn.commit()
+                    print("DEBUG migrate_schema: Added hod_email column")
+                except Exception as e:
+                    print(f"DEBUG migrate_schema: Failed to add hod_email: {e}")
+                    
         except Exception as e:
             print(f"Schema migration notice: {e}")
+            import traceback
+            traceback.print_exc()
         
         conn.close()
 
@@ -189,30 +218,56 @@ class Database:
             
             # Check which column name exists
             cursor.execute("PRAGMA table_info(vendors)")
-            vendor_cols = {row[1] for row in cursor.fetchall()}
+            columns = cursor.fetchall()
+            vendor_cols = {row[1] for row in columns}
+            print(f"DEBUG: Available vendor columns: {vendor_cols}")
             
+            df = pd.DataFrame()
+            
+            # Try new schema first
             if 'owner_email' in vendor_cols:
-                # New schema with owner_email
-                df = pd.read_sql_query(
-                    "SELECT * FROM vendors WHERE owner_email = ? ORDER BY vendor_name",
-                    conn,
-                    params=(owner_email,)
-                )
-            elif 'owner' in vendor_cols:
-                # Old schema with owner
-                df = pd.read_sql_query(
-                    "SELECT * FROM vendors WHERE owner = ? ORDER BY vendor_name",
-                    conn,
-                    params=(owner_email,)
-                )
-            else:
-                # No owner column at all
-                df = pd.DataFrame()
+                try:
+                    print(f"DEBUG: Querying with owner_email column")
+                    df = pd.read_sql_query(
+                        "SELECT * FROM vendors WHERE owner_email = ? ORDER BY vendor_name",
+                        conn,
+                        params=(owner_email,)
+                    )
+                    print(f"DEBUG: Found {len(df)} vendors with owner_email={owner_email}")
+                except Exception as e:
+                    print(f"DEBUG: owner_email query failed: {e}, trying owner column")
+                    df = pd.DataFrame()
+            
+            # Fallback to old schema
+            if df.empty and 'owner' in vendor_cols:
+                try:
+                    print(f"DEBUG: Querying with owner column")
+                    df = pd.read_sql_query(
+                        "SELECT * FROM vendors WHERE owner = ? ORDER BY vendor_name",
+                        conn,
+                        params=(owner_email,)
+                    )
+                    print(f"DEBUG: Found {len(df)} vendors with owner={owner_email}")
+                except Exception as e:
+                    print(f"DEBUG: owner query also failed: {e}")
+                    df = pd.DataFrame()
+            
+            # Last resort: get all vendors
+            if df.empty:
+                print(f"DEBUG: No owner/owner_email columns found, returning all vendors")
+                try:
+                    df = pd.read_sql_query("SELECT * FROM vendors ORDER BY vendor_name", conn)
+                    print(f"DEBUG: Returned {len(df)} total vendors")
+                except Exception as e:
+                    print(f"DEBUG: Even basic query failed: {e}")
+                    df = pd.DataFrame()
             
             conn.close()
             return df if not df.empty else pd.DataFrame()
         except Exception as e:
             print(f"Error getting vendors by owner: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
 
     def get_unique_departments(self) -> List[str]:
