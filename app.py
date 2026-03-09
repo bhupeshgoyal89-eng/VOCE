@@ -463,16 +463,24 @@ def page_obligation_register():
     
     # Display
     if not obligations_df.empty:
-        st.dataframe(
-            obligations_df[[
-                'vendor_name', 'department', 'agreement_type', 'agreement_term',
-                'scope_of_work', 'service_levels', 'penalties', 'reporting_obligations',
-                'servicing_obligations', 'kpis_or_volume_commitments', 'data_security_protocols',
-                'payment_obligations', 'milestone_completion', 'dependencies', 'billing_status', 'created_at'
-            ]],
-            use_container_width=True,
-            hide_index=True
-        )
+        # Select only columns that exist
+        available_cols = [col for col in [
+            'vendor_name', 'department', 'agreement_type', 'agreement_term',
+            'scope_of_work', 'service_levels', 'penalties', 'reporting_obligations',
+            'servicing_obligations', 'kpis_or_volume_commitments', 'data_security_protocols',
+            'payment_obligations', 'milestone_completion', 'dependencies', 'billing_status', 'created_at'
+        ] if col in obligations_df.columns]
+        
+        if available_cols:
+            st.dataframe(
+                obligations_df[available_cols],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            # Fallback: show all columns
+            st.dataframe(obligations_df, use_container_width=True, hide_index=True)
+        
         st.success(f"Showing {len(obligations_df)} obligation(s)")
     else:
         st.info("No obligations found")

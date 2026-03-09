@@ -276,30 +276,46 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            cursor.execute("""
-                INSERT INTO obligations 
-                (vendor_id, agreement_type, agreement_term, scope_of_work, service_levels, 
-                 penalties, reporting_obligations, servicing_obligations, kpis_or_volume_commitments,
-                 data_security_protocols, payment_obligations, milestone_completion, dependencies,
-                 billing_status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                obligation_data.get('vendor_id'),
-                obligation_data.get('agreement_type'),
-                obligation_data.get('agreement_term'),
-                obligation_data.get('scope_of_work'),
-                obligation_data.get('service_levels'),
-                obligation_data.get('penalties'),
-                obligation_data.get('reporting_obligations'),
-                obligation_data.get('servicing_obligations'),
-                obligation_data.get('kpis_or_volume_commitments'),
-                obligation_data.get('data_security_protocols'),
-                obligation_data.get('payment_obligations'),
-                obligation_data.get('milestone_completion'),
-                obligation_data.get('dependencies'),
-                obligation_data.get('billing_status'),
-                datetime.now()
-            ))
+            # Check which columns exist in the table
+            cursor.execute("PRAGMA table_info(obligations)")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            
+            # Build INSERT statement with only existing columns
+            cols_to_insert = []
+            values_to_insert = []
+            
+            col_mapping = {
+                'vendor_id': obligation_data.get('vendor_id'),
+                'agreement_type': obligation_data.get('agreement_type'),
+                'agreement_term': obligation_data.get('agreement_term'),
+                'scope_of_work': obligation_data.get('scope_of_work'),
+                'service_levels': obligation_data.get('service_levels'),
+                'penalties': obligation_data.get('penalties'),
+                'reporting_obligations': obligation_data.get('reporting_obligations'),
+                'servicing_obligations': obligation_data.get('servicing_obligations'),
+                'kpis_or_volume_commitments': obligation_data.get('kpis_or_volume_commitments'),
+                'data_security_protocols': obligation_data.get('data_security_protocols'),
+                'payment_obligations': obligation_data.get('payment_obligations'),
+                'milestone_completion': obligation_data.get('milestone_completion'),
+                'dependencies': obligation_data.get('dependencies'),
+                'billing_status': obligation_data.get('billing_status'),
+                'created_at': datetime.now()
+            }
+            
+            for col, val in col_mapping.items():
+                if col in existing_cols:
+                    cols_to_insert.append(col)
+                    values_to_insert.append(val)
+            
+            # Only insert if we have at least vendor_id
+            if 'vendor_id' not in cols_to_insert:
+                return False
+            
+            placeholders = ', '.join(['?' for _ in values_to_insert])
+            cols_str = ', '.join(cols_to_insert)
+            
+            sql = f"INSERT INTO obligations ({cols_str}) VALUES ({placeholders})"
+            cursor.execute(sql, values_to_insert)
             
             conn.commit()
             conn.close()
@@ -310,32 +326,50 @@ class Database:
 
     def get_all_obligations(self) -> pd.DataFrame:
         """Get all obligations with vendor details"""
-        conn = self.get_connection()
-        df = pd.read_sql_query("""
-            SELECT 
-                o.obligation_id,
-                v.vendor_name,
-                v.department,
-                o.agreement_type,
-                o.agreement_term,
-                o.scope_of_work,
-                o.service_levels,
-                o.penalties,
-                o.reporting_obligations,
-                o.servicing_obligations,
-                o.kpis_or_volume_commitments,
-                o.data_security_protocols,
-                o.payment_obligations,
-                o.milestone_completion,
-                o.dependencies,
-                o.billing_status,
-                o.created_at
-            FROM obligations o
-            LEFT JOIN vendors v ON o.vendor_id = v.vendor_id
-            ORDER BY o.created_at DESC
-        """, conn)
-        conn.close()
-        return df
+        try:
+            conn = self.get_connection()
+            # Try new schema first, fall back to simple query
+            try:
+                df = pd.read_sql_query("""
+                    SELECT 
+                        o.obligation_id,
+                        v.vendor_name,
+                        v.department,
+                        o.agreement_type,
+                        o.agreement_term,
+                        o.scope_of_work,
+                        o.service_levels,
+                        o.penalties,
+                        o.reporting_obligations,
+                        o.servicing_obligations,
+                        o.kpis_or_volume_commitments,
+                        o.data_security_protocols,
+                        o.payment_obligations,
+                        o.milestone_completion,
+                        o.dependencies,
+                        o.billing_status,
+                        o.created_at
+                    FROM obligations o
+                    LEFT JOIN vendors v ON o.vendor_id = v.vendor_id
+                    ORDER BY o.created_at DESC
+                """, conn)
+            except:
+                # Fallback to simple query for old schema
+                df = pd.read_sql_query("""
+                    SELECT 
+                        o.*,
+                        v.vendor_name,
+                        v.department
+                    FROM obligations o
+                    LEFT JOIN vendors v ON o.vendor_id = v.vendor_id
+                    ORDER BY o.created_at DESC
+                """, conn)
+            
+            conn.close()
+            return df if not df.empty else pd.DataFrame()
+        except Exception as e:
+            print(f"Error getting all obligations: {e}")
+            return pd.DataFrame()
 
     def get_obligations_by_vendor(self, vendor_id: str) -> pd.DataFrame:
         """Get obligations for a specific vendor"""
@@ -350,30 +384,51 @@ class Database:
 
     def search_obligations(self, search_term: str) -> pd.DataFrame:
         """Search obligations by keyword"""
-        conn = self.get_connection()
-        search_pattern = f"%{search_term}%"
-        df = pd.read_sql_query("""
-            SELECT 
-                o.obligation_id,
-                v.vendor_name,
-                v.department,
-                o.agreement_type,
-                o.scope_of_work,
-                o.service_levels,
-                o.payment_obligations,
-                o.billing_status,
-                o.created_at
-            FROM obligations o
-            LEFT JOIN vendors v ON o.vendor_id = v.vendor_id
-            WHERE 
-                v.vendor_name LIKE ? OR
-                o.scope_of_work LIKE ? OR
-                o.service_levels LIKE ? OR
-                o.payment_obligations LIKE ?
-            ORDER BY o.created_at DESC
-        """, conn, params=(search_pattern, search_pattern, search_pattern, search_pattern))
-        conn.close()
-        return df
+        try:
+            conn = self.get_connection()
+            search_pattern = f"%{search_term}%"
+            
+            try:
+                df = pd.read_sql_query("""
+                    SELECT 
+                        o.obligation_id,
+                        v.vendor_name,
+                        v.department,
+                        o.agreement_type,
+                        o.scope_of_work,
+                        o.service_levels,
+                        o.payment_obligations,
+                        o.billing_status,
+                        o.created_at
+                    FROM obligations o
+                    LEFT JOIN vendors v ON o.vendor_id = v.vendor_id
+                    WHERE 
+                        v.vendor_name LIKE ? OR
+                        o.scope_of_work LIKE ? OR
+                        o.service_levels LIKE ? OR
+                        o.payment_obligations LIKE ?
+                    ORDER BY o.created_at DESC
+                """, conn, params=(search_pattern, search_pattern, search_pattern, search_pattern))
+            except:
+                # Fallback for old schema
+                df = pd.read_sql_query("""
+                    SELECT 
+                        o.*,
+                        v.vendor_name,
+                        v.department
+                    FROM obligations o
+                    LEFT JOIN vendors v ON o.vendor_id = v.vendor_id
+                    WHERE 
+                        v.vendor_name LIKE ? OR
+                        o.scope_of_work LIKE ?
+                    ORDER BY o.created_at DESC
+                """, conn, params=(search_pattern, search_pattern))
+            
+            conn.close()
+            return df if not df.empty else pd.DataFrame()
+        except Exception as e:
+            print(f"Error searching obligations: {e}")
+            return pd.DataFrame()
 
     # ============ CERTIFICATION OPERATIONS ============
     
