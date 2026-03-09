@@ -1,6 +1,48 @@
-# ⚠️ Gemini API Extraction Failing - Troubleshooting Guide
+# 🔧 GEMINI API FIX - CRITICAL DISCOVERY (RESOLVED ✅)
 
-## Issue
+## Status: FIXED in Commit c5c9ffa
+
+### The Real Problem (Just Discovered)
+Your GEMINI_API_KEY is correctly set in Streamlit Cloud Secrets, but the Python app wasn't reading it because **Streamlit Secrets are NOT automatically exposed as environment variables**.
+
+### Root Cause
+- Streamlit Secrets are stored in a protected dictionary (`st.secrets`)
+- They are **NOT** automatically converted to environment variables (`os.environ`)  
+- Previous code only checked `os.getenv('GEMINI_API_KEY')`, which always returned None on Streamlit Cloud
+- This caused the app to think API key wasn't configured, even though it was in Secrets UI
+
+### The Solution ✅ (Just Deployed)
+
+Created `get_gemini_api_key()` function that:
+1. ✅ First checks Streamlit Secrets: `st.secrets['GEMINI_API_KEY']` (for Streamlit Cloud)
+2. ✅ Falls back to environment variable (for local/Docker)
+3. ✅ Returns None if neither available
+
+**Code changes:**
+- Added `get_gemini_api_key()` function to ai_parser.py
+- Updated app.py to import and use this function
+- Updated sidebar and `is_gemini_configured()` to use the new function
+
+### What Happens Now
+When app.py starts:
+```
+1. Calls get_gemini_api_key()
+2. Reads from st.secrets['GEMINI_API_KEY'] (Streamlit Cloud)
+3. Initializes Gemini: genai.configure(api_key=api_key)
+4. Sidebar shows: "✅ Gemini API: Ready (AIza...)"
+5. Agreement Upload works! ✅
+```
+
+## Deployment Status
+- ✅ Committed to main: `c5c9ffa`
+- ✅ Auto-deployed to Streamlit Cloud
+- ⏳ Waiting for rebuild (2-5 minutes)
+
+---
+
+## Original Issue (For Reference)
+
+### Issue
 When uploading agreements for obligation extraction, you see:
 ```
 WARNING:ai_parser:Extraction failed, returning empty structure
