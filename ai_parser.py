@@ -25,7 +25,7 @@ class GeminiObligationParser:
         
         logger.info(f"Initializing Gemini with API key: {api_key[:10]}...")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = genai.GenerativeModel("gemini-2.5-flash")
         logger.info("Gemini model initialized successfully")
 
     def extract_obligations(self, agreement_text: str) -> Optional[Dict[str, Any]]:
