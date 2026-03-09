@@ -97,7 +97,7 @@ Be concise and extract only relevant information from the agreement.
     @staticmethod
     def _parse_json_response(response_text: str) -> Optional[Dict[str, Any]]:
         """
-        Parse JSON from Gemini response, handling various formats
+        Parse JSON from Gemini response, handling various formats and incomplete data
         
         Args:
             response_text: Raw response from Gemini
@@ -111,19 +111,35 @@ Be concise and extract only relevant information from the agreement.
             result = json.loads(response_text)
             logger.info("Successfully parsed JSON directly")
             return result
-        except json.JSONDecodeError:
-            logger.debug("Direct JSON parse failed, trying markdown blocks...")
+        except json.JSONDecodeError as e:
+            logger.debug(f"Direct JSON parse failed: {e}")
         
         # Try to extract JSON from markdown code blocks
         try:
+            json_str = None
             if '```json' in response_text:
                 json_str = response_text.split('```json')[1].split('```')[0].strip()
-                logger.debug("Extracted JSON from markdown code block")
-                return json.loads(json_str)
+                logger.debug("Extracting JSON from markdown code block")
             elif '```' in response_text:
                 json_str = response_text.split('```')[1].split('```')[0].strip()
-                logger.debug("Extracted JSON from generic code block")
-                return json.loads(json_str)
+                logger.debug("Extracting JSON from generic code block")
+            
+            if json_str:
+                try:
+                    result = json.loads(json_str)
+                    logger.info("Successfully parsed markdown block as JSON")
+                    return result
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Markdown block JSON parsing failed: {e}")
+                    # Try to fix incomplete JSON in markdown block
+                    fixed_json = GeminiObligationParser._fix_incomplete_json(json_str)
+                    if fixed_json:
+                        try:
+                            result = json.loads(fixed_json)
+                            logger.info("Successfully parsed fixed markdown block JSON")
+                            return result
+                        except json.JSONDecodeError:
+                            logger.debug("Could not parse even after fixing")
         except (IndexError, json.JSONDecodeError) as e:
             logger.debug(f"Markdown block extraction failed: {e}")
         
@@ -136,13 +152,71 @@ Be concise and extract only relevant information from the agreement.
             if start_idx != -1 and end_idx > start_idx:
                 json_str = response_text[start_idx:end_idx]
                 logger.debug(f"Found JSON between positions {start_idx}-{end_idx}")
-                return json.loads(json_str)
-        except json.JSONDecodeError as e:
+                
+                try:
+                    result = json.loads(json_str)
+                    logger.info("Successfully parsed extracted JSON object")
+                    return result
+                except json.JSONDecodeError:
+                    # Try to fix incomplete JSON
+                    fixed_json = GeminiObligationParser._fix_incomplete_json(json_str)
+                    if fixed_json:
+                        try:
+                            result = json.loads(fixed_json)
+                            logger.info("Successfully parsed fixed JSON object")
+                            return result
+                        except json.JSONDecodeError:
+                            logger.debug("Could not parse even after fixing")
+        except (IndexError, json.JSONDecodeError) as e:
             logger.debug(f"JSON object extraction failed: {e}")
         
         logger.error("Could not parse Gemini response as JSON")
-        logger.error(f"Response text: {response_text[:200]}...")
+        logger.error(f"Response text: {response_text[:300]}...")
         return None
+
+    @staticmethod
+    def _fix_incomplete_json(json_str: str) -> Optional[str]:
+        """
+        Attempt to fix incomplete or malformed JSON strings
+        
+        Common issues:
+        - Unterminated strings (ending with "...")
+        - Missing closing braces
+        - Incomplete values
+        
+        Args:
+            json_str: Potentially incomplete JSON string
+            
+        Returns:
+            Fixed JSON string or None if unfixable
+        """
+        logger.debug("Attempting to fix incomplete JSON...")
+        
+        try:
+            # Count braces to see if we need to close
+            open_braces = json_str.count('{')
+            close_braces = json_str.count('}')
+            
+            if open_braces > close_braces:
+                # Add missing closing braces
+                json_str = json_str.rstrip() + '}' * (open_braces - close_braces)
+                logger.debug(f"Added {open_braces - close_braces} closing braces")
+            
+            # Fix unterminated strings (e.g., ending with "...")
+            # Look for strings that end with "..." and close them properly
+            import re
+            
+            # Replace incomplete string endings like "..." with proper value
+            json_str = re.sub(r':\s*"[^"]*\.\.\."', ': null', json_str)
+            json_str = re.sub(r':\s*"[^"]*\.\.\.$', ': null', json_str)
+            
+            # Try to parse the fixed JSON
+            result = json.loads(json_str)
+            logger.info("Successfully fixed and parsed JSON")
+            return json_str
+        except Exception as e:
+            logger.debug(f"Could not fix JSON: {e}")
+            return None
 
     def extract_with_fallback(self, agreement_text: str) -> Dict[str, Any]:
         """
