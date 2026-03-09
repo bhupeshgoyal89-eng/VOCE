@@ -596,6 +596,11 @@ class Database:
                     set_parts.append("hod_email = ?")
                     params.append(hod_email)
                 
+                # Also update hod_name if it exists (for backwards compatibility)
+                if 'hod_name' in cert_cols:
+                    set_parts.append("hod_name = ?")
+                    params.append(hod_email.split('@')[0])
+                
                 set_parts.append("status = ?")
                 params.append(status)
                 
@@ -636,6 +641,11 @@ class Database:
                 if has_hod:
                     insert_cols.append('hod_email')
                     insert_vals.append(hod_email)
+                
+                # Also populate hod_name if it exists (for backwards compatibility)
+                if 'hod_name' in cert_cols:
+                    insert_cols.append('hod_name')
+                    insert_vals.append(hod_email.split('@')[0])  # Use first part of email as name
                 
                 if has_comments and comments:
                     insert_cols.append('comments')
