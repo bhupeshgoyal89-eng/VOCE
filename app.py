@@ -101,14 +101,23 @@ def get_database():
 def get_gemini_parser():
     """Initialize Gemini parser"""
     try:
-        return GeminiObligationParser()
+        logger.info("Attempting to initialize Gemini parser...")
+        parser = GeminiObligationParser()
+        logger.info("Gemini parser initialized successfully")
+        return parser
     except ValueError as e:
-        st.error(f"⚠️ {str(e)}")
+        logger.error(f"Failed to initialize Gemini parser: {e}")
+        st.error(f"⚠️ Gemini Configuration Error: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error initializing Gemini: {type(e).__name__}: {e}", exc_info=True)
+        st.error(f"⚠️ Error initializing Gemini: {str(e)}")
         return None
 
 def is_gemini_configured():
     """Check if Gemini API is properly configured"""
-    return os.getenv('GEMINI_API_KEY') is not None
+    api_key = os.getenv('GEMINI_API_KEY')
+    return api_key is not None
 
 # Initialize session state
 if 'current_user_email' not in st.session_state:
@@ -145,10 +154,14 @@ with st.sidebar:
     
     # API status
     st.markdown("### ⚙️ System Status")
-    if is_gemini_configured():
-        st.success("✅ Gemini API Configured")
+    api_key = os.getenv('GEMINI_API_KEY')
+    if api_key:
+        st.success(f"✅ Gemini API: Ready ({api_key[:10]}...)")
+        if not api_key.startswith('AIza'):
+            st.warning(f"⚠️ API key format unusual. Expected to start with 'AIza', got '{api_key[:10]}'")
     else:
-        st.warning("⚠️ Gemini API Not Set")
+        st.warning("⚠️ Gemini API: Not configured in Streamlit Secrets")
+        st.info("Add GEMINI_API_KEY to Streamlit Cloud Secrets to enable Agreement Upload")
     
     st.markdown(f"**Current Cycle:** {CURRENT_CYCLE}")
 

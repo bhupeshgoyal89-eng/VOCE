@@ -20,8 +20,16 @@ class GeminiObligationParser:
     def __init__(self):
         """Initialize Gemini model"""
         api_key = os.getenv('GEMINI_API_KEY')
-        if not api_key:
-            logger.error("GEMINI_API_KEY environment variable not set!")
+        
+        # Debug logging
+        logger.info(f"DEBUG: Checking for GEMINI_API_KEY environment variable...")
+        if api_key:
+            logger.info(f"DEBUG: API key found! Length: {len(api_key)}, First 10 chars: {api_key[:10]}...")
+            if not api_key.startswith('AIza'):
+                logger.warning(f"DEBUG: API key looks unusual - doesn't start with 'AIza'. Starts with: {api_key[:10]}")
+        else:
+            logger.error("DEBUG: GEMINI_API_KEY environment variable NOT found!")
+            logger.error("DEBUG: Available environment variables starting with 'G': {[k for k in os.environ.keys() if k.startswith('G')]}")
             raise ValueError("GEMINI_API_KEY environment variable not set. Please set it in Streamlit Secrets.")
         
         logger.info(f"Initializing Gemini with API key: {api_key[:10]}...")
@@ -30,7 +38,7 @@ class GeminiObligationParser:
             self.model = genai.GenerativeModel("gemini-2.5-flash")
             logger.info("Gemini model initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini: {e}", exc_info=True)
+            logger.error(f"Failed to initialize Gemini: {type(e).__name__}: {e}", exc_info=True)
             raise ValueError(f"Failed to initialize Gemini API: {e}")
 
     def extract_obligations(self, agreement_text: str) -> Optional[Dict[str, Any]]:
