@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 from database import Database
 from agreement_parser import AgreementParser
-from ai_parser import GeminiObligationParser
+from ai_parser import GeminiObligationParser, get_gemini_api_key
 from utils import (
     generate_unique_id,
     save_uploaded_file,
@@ -116,7 +116,7 @@ def get_gemini_parser():
 
 def is_gemini_configured():
     """Check if Gemini API is properly configured"""
-    api_key = os.getenv('GEMINI_API_KEY')
+    api_key = get_gemini_api_key()
     return api_key is not None
 
 # Initialize session state
@@ -154,7 +154,7 @@ with st.sidebar:
     
     # API status
     st.markdown("### ⚙️ System Status")
-    api_key = os.getenv('GEMINI_API_KEY')
+    api_key = get_gemini_api_key()
     if api_key:
         st.success(f"✅ Gemini API: Ready ({api_key[:10]}...)")
         if not api_key.startswith('AIza'):

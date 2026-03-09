@@ -14,23 +14,46 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
+def get_gemini_api_key():
+    """
+    Get Gemini API key from either:
+    1. Streamlit Secrets (st.secrets) - for Streamlit Cloud
+    2. Environment variable (os.getenv) - for local/Docker
+    """
+    try:
+        # Try Streamlit Secrets first (for Streamlit Cloud)
+        import streamlit as st
+        if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
+            api_key = st.secrets['GEMINI_API_KEY']
+            logger.info(f"DEBUG: API key loaded from Streamlit Secrets")
+            return api_key
+    except Exception as e:
+        logger.debug(f"Could not read Streamlit Secrets: {e}")
+    
+    # Fallback to environment variable (for local/Docker)
+    api_key = os.getenv('GEMINI_API_KEY')
+    if api_key:
+        logger.info(f"DEBUG: API key loaded from environment variable")
+    
+    return api_key
+
+
 class GeminiObligationParser:
     """Extract vendor obligations using Google Gemini"""
 
     def __init__(self):
         """Initialize Gemini model"""
-        api_key = os.getenv('GEMINI_API_KEY')
+        logger.info(f"DEBUG: Initializing GeminiObligationParser...")
+        api_key = get_gemini_api_key()
         
         # Debug logging
-        logger.info(f"DEBUG: Checking for GEMINI_API_KEY environment variable...")
         if api_key:
             logger.info(f"DEBUG: API key found! Length: {len(api_key)}, First 10 chars: {api_key[:10]}...")
             if not api_key.startswith('AIza'):
                 logger.warning(f"DEBUG: API key looks unusual - doesn't start with 'AIza'. Starts with: {api_key[:10]}")
         else:
-            logger.error("DEBUG: GEMINI_API_KEY environment variable NOT found!")
-            logger.error("DEBUG: Available environment variables starting with 'G': {[k for k in os.environ.keys() if k.startswith('G')]}")
-            raise ValueError("GEMINI_API_KEY environment variable not set. Please set it in Streamlit Secrets.")
+            logger.error("DEBUG: GEMINI_API_KEY not found in Streamlit Secrets or environment!")
+            raise ValueError("GEMINI_API_KEY not set. Please set it in Streamlit Secrets (Streamlit Cloud) or as an environment variable (local/Docker).")
         
         logger.info(f"Initializing Gemini with API key: {api_key[:10]}...")
         try:
