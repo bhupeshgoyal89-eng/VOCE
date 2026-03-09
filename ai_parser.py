@@ -21,12 +21,17 @@ class GeminiObligationParser:
         """Initialize Gemini model"""
         api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
+            logger.error("GEMINI_API_KEY environment variable not set!")
+            raise ValueError("GEMINI_API_KEY environment variable not set. Please set it in Streamlit Secrets.")
         
         logger.info(f"Initializing Gemini with API key: {api_key[:10]}...")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
-        logger.info("Gemini model initialized successfully")
+        try:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("gemini-2.5-flash")
+            logger.info("Gemini model initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini: {e}", exc_info=True)
+            raise ValueError(f"Failed to initialize Gemini API: {e}")
 
     def extract_obligations(self, agreement_text: str) -> Optional[Dict[str, Any]]:
         """
@@ -80,18 +85,22 @@ Be concise and extract only relevant information from the agreement.
             )
             
             if not response.text:
-                logger.error("Empty response from Gemini API")
+                logger.error("Empty response from Gemini API - check if API key is valid")
                 return None
             
             logger.debug(f"Gemini response: {response.text[:500]}...")
             
             # Parse JSON response
             parsed = self._parse_json_response(response.text)
-            logger.info(f"Successfully parsed obligations: {list(parsed.keys()) if parsed else 'None'}")
+            if parsed:
+                logger.info(f"Successfully parsed obligations: {list(parsed.keys())}")
+            else:
+                logger.warning("JSON parsing returned None")
             return parsed
             
         except Exception as e:
-            logger.error(f"Error calling Gemini API: {e}", exc_info=True)
+            logger.error(f"Error calling Gemini API: {type(e).__name__}: {e}", exc_info=True)
+            logger.error("This usually means: 1) API key is invalid, 2) API quota exceeded, 3) Network error")
             return None
 
     @staticmethod
@@ -233,6 +242,7 @@ Be concise and extract only relevant information from the agreement.
         
         if result is None:
             logger.warning("Extraction failed, returning empty structure")
+            logger.warning("IMPORTANT: Make sure GEMINI_API_KEY is set in Streamlit Cloud Secrets!")
             # Return empty structure if extraction failed
             result = {
                 "agreement_type": None,
@@ -252,7 +262,8 @@ Be concise and extract only relevant information from the agreement.
         else:
             logger.info(f"Extraction successful. Fields extracted:")
             for key, value in result.items():
-                logger.info(f"  {key}: {str(value)[:100] if value else 'None'}")
+                if value:
+                    logger.info(f"  {key}: {str(value)[:80]}...")
         
         return result
 
