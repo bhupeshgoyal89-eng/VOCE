@@ -717,11 +717,10 @@ def main():
     
     st.sidebar.info(
         "**Setup Instructions:**\n\n"
-        "1. Set GEMINI_API_KEY environment variable\n"
-        "2. Upload vendor master data\n"
-        "3. Upload agreement documents\n"
-        "4. Review extracted obligations\n"
-        "5. Certify obligations"
+        "1. Upload vendor master data\n"
+        "2. Upload agreement documents\n"
+        "3. Review extracted obligations\n"
+        "4. Certify obligations"
     )
     
     # Route to pages
