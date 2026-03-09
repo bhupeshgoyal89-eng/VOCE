@@ -1,10 +1,10 @@
 """
 Vendor Obligation Control Engine (VOCE)
-An internal tool for automated vendor obligation tracking
+An internal tool for automated vendor obligation tracking with department-level certification workflows
 
 Frontend: Streamlit
 Backend: Python
-AI: Google Gemini 1.5 Flash
+AI: Google Gemini 2.5 Flash
 Database: SQLite
 """
 
@@ -30,6 +30,26 @@ from utils import (
     create_agreement_id
 )
 
+# ============ CONSTANTS ============
+
+CURRENT_CYCLE = "2026-03"
+USER_EMAILS = [
+    "cto@company.com",
+    "cro@company.com",
+    "cfo@company.com",
+    "cmo@company.com",
+    "headcx@company.com",
+    "chro@company.com",
+    "coo@company.com",
+    "cdo@company.com",
+    "fpna@company.com"
+]
+CERTIFICATION_STATUSES = ["confirmed", "edit_requested", "issue_flagged"]
+STATUS_LABELS = {
+    "confirmed": "✅ Confirmed",
+    "edit_requested": "📝 Edit Requested",
+    "issue_flagged": "🚩 Issue Flagged"
+}
 
 # ============ PAGE CONFIGURATION ============
 
@@ -40,7 +60,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better UI
+# Custom CSS
 st.markdown("""
     <style>
     .metric-card {
@@ -70,14 +90,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
 # ============ SESSION STATE INITIALIZATION ============
 
 @st.cache_resource
 def get_database():
     """Initialize database connection"""
     return Database(db_path="data/voce.db")
-
 
 @st.cache_resource
 def get_gemini_parser():
@@ -88,147 +106,205 @@ def get_gemini_parser():
         st.error(f"⚠️ {str(e)}")
         return None
 
-
-# ============ HELPER FUNCTIONS ============
-
 def is_gemini_configured():
     """Check if Gemini API is properly configured"""
     return os.getenv('GEMINI_API_KEY') is not None
 
+# Initialize session state
+if 'current_user_email' not in st.session_state:
+    st.session_state.current_user_email = USER_EMAILS[0]
+
+# ============ SIDEBAR ============
+
+with st.sidebar:
+    st.title("🏢 VOCE")
+    
+    # User selection
+    st.markdown("### 👤 User Login")
+    st.session_state.current_user_email = st.selectbox(
+        "Select User Email",
+        USER_EMAILS,
+        index=USER_EMAILS.index(st.session_state.current_user_email) if st.session_state.current_user_email in USER_EMAILS else 0,
+        key="user_selector"
+    )
+    st.info(f"Logged in as: **{st.session_state.current_user_email}**")
+    
+    # Navigation
+    st.markdown("### 📊 Navigation")
+    page = st.radio(
+        "Select Page",
+        [
+            "🏠 Home",
+            "📦 Vendor Master",
+            "📄 Agreement Upload",
+            "📋 Obligation Register",
+            "🎯 HoD Dashboard",
+            "📈 FP&A Dashboard"
+        ]
+    )
+    
+    # API status
+    st.markdown("### ⚙️ System Status")
+    if is_gemini_configured():
+        st.success("✅ Gemini API Configured")
+    else:
+        st.warning("⚠️ Gemini API Not Set")
+    
+    st.markdown(f"**Current Cycle:** {CURRENT_CYCLE}")
+
+# ============ PAGE: HOME ============
+
+def page_home():
+    """Home page with overview"""
+    st.title("🏢 Vendor Obligation Control Engine (VOCE)")
+    st.markdown("Automated vendor obligation tracking with department-level certification workflows.")
+    
+    db = get_database()
+    metrics = db.get_dashboard_metrics()
+    
+    # Dashboard metrics
+    st.markdown("### 📊 System Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Vendors", metrics['total_vendors'])
+    
+    with col2:
+        st.metric("Active Vendors", metrics['active_vendors'])
+    
+    with col3:
+        st.metric("Total Agreements", metrics['total_agreements'])
+    
+    with col4:
+        st.metric("Total Obligations", metrics['total_obligations'])
+    
+    # Features
+    st.markdown("### ✨ Key Features")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **📦 Vendor Master**
+        - Upload and manage vendor data
+        - Track vendor departments and contacts
+        - Monitor active vendors
+        
+        **📄 Agreement Upload**
+        - Upload PDF, DOCX, TXT agreements
+        - AI-powered obligation extraction
+        - Automatic obligation parsing
+        """)
+    
+    with col2:
+        st.markdown("""
+        **📋 Obligation Register**
+        - View extracted vendor obligations
+        - Search and filter capabilities
+        - Full obligation details
+        
+        **🎯 HoD Dashboard**
+        - Department head certification
+        - Vendor-specific workflows
+        - Action tracking
+        """)
 
 # ============ PAGE: VENDOR MASTER ============
 
 def page_vendor_master():
-    """Vendor Master page - Upload and manage vendor data"""
+    """Vendor Master page"""
     st.header("📦 Vendor Master")
     st.markdown("Upload vendor master data and manage vendor information.")
     
     db = get_database()
     
-    col1, col2 = st.columns([3, 1])
+    tabs = st.tabs(["View Vendors", "Upload CSV"])
     
-    with col1:
-        st.subheader("Upload Vendor Master CSV")
+    with tabs[0]:
+        st.subheader("All Vendors")
         
-        uploaded_file = st.file_uploader(
-            "Select CSV file with vendor data",
-            type=['csv']
-        )
+        # Filters
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            search_vendor = st.text_input("Search vendor name", "")
+        
+        with col2:
+            departments = ["All"] + db.get_unique_departments()
+            selected_dept = st.selectbox("Filter by department", departments)
+        
+        with col3:
+            owners = ["All"] + db.get_unique_owners()
+            selected_owner = st.selectbox("Filter by owner", owners)
+        
+        # Get vendors
+        vendors_df = db.get_all_vendors()
+        
+        # Apply filters
+        if search_vendor:
+            vendors_df = vendors_df[vendors_df['vendor_name'].str.contains(search_vendor, case=False, na=False)]
+        if selected_dept != "All":
+            vendors_df = vendors_df[vendors_df['department'] == selected_dept]
+        if selected_owner != "All":
+            vendors_df = vendors_df[vendors_df['owner_email'] == selected_owner]
+        
+        # Display table
+        if not vendors_df.empty:
+            st.dataframe(
+                vendors_df[[
+                    'vendor_id', 'vendor_name', 'department', 'nature_of_expense',
+                    'owner_email', 'recurring', 'active', 'last_contract_revision_date'
+                ]],
+                use_container_width=True,
+                hide_index=True
+            )
+            st.success(f"Showing {len(vendors_df)} vendor(s)")
+        else:
+            st.info("No vendors found")
+    
+    with tabs[1]:
+        st.subheader("Upload Vendors from CSV")
+        
+        # CSV template info
+        st.info("""
+        **CSV Format Required:**
+        - vendor_id, vendor_name, department, nature_of_expense, owner_email, recurring, active, last_contract_revision_date
+        
+        **Example:**
+        - v001, Acme Corp, IT, Software License, cto@company.com, 1, 1, 2025-12-31
+        """)
+        
+        uploaded_file = st.file_uploader("Upload CSV file", type=['csv'])
         
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
+                st.write("Preview:")
+                st.dataframe(df.head(), use_container_width=True)
                 
-                st.write("**Preview of uploaded data:**")
-                st.dataframe(df.head())
-                
-                required_columns = [
-                    'vendor_id', 'vendor_name', 'department',
-                    'nature_of_expense', 'owner', 'recurring', 'active',
-                    'last_contract_revision_date'
-                ]
-                
-                missing_columns = [col for col in required_columns if col not in df.columns]
-                
-                if missing_columns:
-                    st.error(f"Missing required columns: {', '.join(missing_columns)}")
-                else:
-                    if st.button("✅ Upload Vendors", key="upload_vendors"):
-                        added, errors = db.add_vendors_from_csv(df)
-                        
-                        if added > 0:
-                            st.success(f"✅ Successfully added {added} vendor(s)")
-                        
-                        if errors:
-                            with st.expander("View Errors"):
-                                for error in errors:
-                                    st.warning(error)
-                
+                if st.button("✅ Upload Vendors"):
+                    added, errors = db.add_vendors_from_csv(df)
+                    st.success(f"✅ Added {added} vendor(s)")
+                    if errors:
+                        st.warning("Errors:")
+                        for error in errors:
+                            st.write(f"- {error}")
             except Exception as e:
                 st.error(f"Error reading CSV: {e}")
-    
-    with col2:
-        st.subheader("Sample CSV Template")
-        sample_csv = """vendor_id,vendor_name,department,nature_of_expense,owner,recurring,active,last_contract_revision_date
-V001,Acme Corp,IT,Software,John Smith,TRUE,TRUE,2024-01-15
-V002,Tech Solutions,Finance,Consulting,Jane Doe,FALSE,TRUE,2023-12-01"""
-        
-        st.download_button(
-            label="📥 Download Template",
-            data=sample_csv,
-            file_name="vendor_template.csv",
-            mime="text/csv"
-        )
-    
-    # Display vendors
-    st.subheader("Vendor Directory")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        filter_department = st.selectbox(
-            "Filter by Department",
-            ["All"] + db.get_unique_departments(),
-            key="vendor_filter"
-        )
-    
-    with col2:
-        search_term = st.text_input("Search by vendor name", key="vendor_search")
-    
-    # Get vendors
-    if filter_department == "All":
-        vendors_df = db.get_all_vendors()
-    else:
-        vendors_df = db.get_vendors_by_department(filter_department)
-    
-    # Apply search filter
-    if search_term:
-        vendors_df = vendors_df[
-            vendors_df['vendor_name'].str.contains(search_term, case=False, na=False)
-        ]
-    
-    if not vendors_df.empty:
-        # Display metrics
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total Vendors", len(vendors_df))
-        
-        with col2:
-            active_count = (vendors_df['active'] == True).sum()
-            st.metric("Active", active_count)
-        
-        with col3:
-            inactive_count = (vendors_df['active'] == False).sum()
-            st.metric("Inactive", inactive_count)
-        
-        # Display vendor table
-        st.dataframe(
-            vendors_df[[
-                'vendor_id', 'vendor_name', 'department',
-                'nature_of_expense', 'owner', 'active'
-            ]],
-            use_container_width=True
-        )
-    else:
-        st.info("No vendors found. Upload vendor master data to get started.")
-
 
 # ============ PAGE: AGREEMENT UPLOAD ============
 
 def page_agreement_upload():
-    """Agreement Upload page - Upload and process agreements"""
+    """Agreement Upload page"""
     st.header("📄 Agreement Upload")
     st.markdown("Upload agreement documents for processing and obligation extraction.")
     
     db = get_database()
     gemini_parser = get_gemini_parser()
     
-    # Check Gemini configuration
     if not is_gemini_configured():
-        st.warning("⚠️ GEMINI_API_KEY environment variable not set. Obligation extraction will not work.")
+        st.warning("⚠️ Gemini API not configured. Obligation extraction will not work.")
     
-    # Get vendors for selection
+    # Get vendors
     vendors_df = db.get_all_vendors()
     
     if vendors_df.empty:
@@ -241,33 +317,24 @@ def page_agreement_upload():
     col1, col2 = st.columns(2)
     
     with col1:
-        selected_vendor_name = st.selectbox(
-            "Select Vendor",
-            vendor_options,
-            key="select_vendor"
-        )
+        selected_vendor_name = st.selectbox("Select Vendor", vendor_options)
         selected_vendor_id = vendor_mapping[selected_vendor_name]
     
     with col2:
         st.markdown("**Supported Formats:** PDF, DOCX, TXT")
         uploaded_file = st.file_uploader(
             "Upload Agreement Document",
-            type=['pdf', 'docx', 'txt'],
-            key="agreement_upload"
+            type=['pdf', 'docx', 'txt']
         )
     
     if uploaded_file is not None:
         st.info(f"📋 File: {uploaded_file.name} ({uploaded_file.size} bytes)")
         
-        if st.button("🔄 Process Agreement", key="process_agreement"):
+        if st.button("🔄 Process Agreement"):
             with st.spinner("Processing agreement..."):
                 try:
                     # Save file
-                    file_path = save_uploaded_file(
-                        uploaded_file,
-                        "agreements"
-                    )
-                    
+                    file_path = save_uploaded_file(uploaded_file, "agreements")
                     if not file_path:
                         st.error("Failed to save file")
                         return
@@ -276,13 +343,7 @@ def page_agreement_upload():
                     
                     # Create agreement record
                     agreement_id = create_agreement_id(selected_vendor_id, uploaded_file.name)
-                    agreement_added = db.add_agreement(
-                        agreement_id,
-                        selected_vendor_id,
-                        file_path
-                    )
-                    
-                    if not agreement_added:
+                    if not db.add_agreement(agreement_id, selected_vendor_id, file_path):
                         st.error("Failed to create agreement record")
                         return
                     
@@ -303,14 +364,9 @@ def page_agreement_upload():
                         st.write("Analyzing obligations with Gemini AI...")
                         logger.info(f"Calling Gemini for vendor {selected_vendor_id}...")
                         
-                        obligations = gemini_parser.extract_with_fallback(
-                            agreement_text
-                        )
-                        
+                        obligations = gemini_parser.extract_with_fallback(agreement_text)
                         logger.info(f"Gemini returned: {obligations}")
-                        st.write(f"DEBUG: {obligations}")
                         
-                        # Prepare obligation data for storage
                         obligation_data = {
                             'vendor_id': selected_vendor_id,
                             'agreement_type': obligations.get('agreement_type'),
@@ -319,41 +375,37 @@ def page_agreement_upload():
                             'service_levels': obligations.get('service_levels'),
                             'penalties': obligations.get('penalties_for_breach'),
                             'reporting_obligations': obligations.get('reporting_obligations'),
-                            'payment_terms': obligations.get('payment_obligations'),
-                            'kpis': obligations.get('kpis_or_volume_commitments'),
-                            'data_security': obligations.get('data_security_protocols'),
+                            'servicing_obligations': obligations.get('servicing_obligations'),
+                            'kpis_or_volume_commitments': obligations.get('kpis_or_volume_commitments'),
+                            'data_security_protocols': obligations.get('data_security_protocols'),
+                            'payment_obligations': obligations.get('payment_obligations'),
+                            'milestone_completion': obligations.get('milestone_completion'),
                             'dependencies': obligations.get('dependencies'),
                             'billing_status': obligations.get('billing_status')
                         }
                         
                         logger.info(f"Storing obligation data: {obligation_data}")
                         
-                        # Save to database
                         if db.add_obligation(obligation_data):
                             st.success("✅ Obligations extracted and saved!")
                             
-                            # Display extracted obligations
                             st.subheader("Extracted Obligations")
-                            
                             col1, col2 = st.columns(2)
                             
                             with col1:
                                 st.write("**Agreement Details**")
                                 st.write(f"Type: {obligations.get('agreement_type') or 'N/A'}")
                                 st.write(f"Term: {obligations.get('agreement_term') or 'N/A'}")
-                                st.write(f"Scope: {truncate_text(obligations.get('scope_of_work', 'N/A'), 100)}")
                             
                             with col2:
                                 st.write("**Key Obligations**")
+                                st.write(f"Scope: {truncate_text(obligations.get('scope_of_work', 'N/A'), 100)}")
                                 st.write(f"SLAs: {truncate_text(obligations.get('service_levels', 'N/A'), 100)}")
-                                st.write(f"Payment: {truncate_text(obligations.get('payment_obligations', 'N/A'), 100)}")
-                                st.write(f"Security: {truncate_text(obligations.get('data_security_protocols', 'N/A'), 100)}")
                         else:
                             st.error("Failed to save obligations")
                     else:
                         st.warning("⚠️ Gemini API not configured. Skipping obligation extraction.")
-                        st.write("To enable AI extraction, set GEMINI_API_KEY environment variable.")
-                    
+                
                 except Exception as e:
                     st.error(f"Error processing agreement: {e}")
     
@@ -363,456 +415,251 @@ def page_agreement_upload():
     
     if not agreements_df.empty:
         st.dataframe(
-            agreements_df[[
-                'agreement_id', 'vendor_name', 'file_path', 'upload_date'
-            ]].head(10),
-            use_container_width=True
+            agreements_df[['agreement_id', 'vendor_id', 'vendor_name', 'file_path', 'upload_date']].head(20),
+            use_container_width=True,
+            hide_index=True
         )
     else:
-        st.info("No agreements uploaded yet.")
-
+        st.info("No agreements uploaded yet")
 
 # ============ PAGE: OBLIGATION REGISTER ============
 
 def page_obligation_register():
-    """Obligation Register page - View and search obligations"""
+    """Obligation Register page"""
     st.header("📋 Obligation Register")
-    st.markdown("View and search vendor obligations extracted from agreements.")
+    st.markdown("View and manage all extracted vendor obligations.")
     
     db = get_database()
     
-    # Search and filter options
-    col1, col2 = st.columns([2, 1])
+    # Filters
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        search_term = st.text_input(
-            "🔍 Search obligations",
-            placeholder="Search by vendor name, scope, or payment terms...",
-            key="obligation_search"
-        )
+        search_term = st.text_input("Search obligations", "")
     
     with col2:
-        view_type = st.radio("View", ["All", "Search Results"], horizontal=True)
+        departments = ["All"] + db.get_unique_departments()
+        selected_dept = st.selectbox("Filter by department", departments)
+    
+    with col3:
+        vendors_df = db.get_all_vendors()
+        vendor_names = ["All"] + vendors_df['vendor_name'].tolist()
+        selected_vendor = st.selectbox("Filter by vendor", vendor_names)
     
     # Get obligations
-    if view_type == "Search Results" and search_term:
+    if search_term:
         obligations_df = db.search_obligations(search_term)
-        st.write(f"**Found {len(obligations_df)} result(s)**")
     else:
         obligations_df = db.get_all_obligations()
     
+    # Apply filters
+    if selected_dept != "All":
+        obligations_df = obligations_df[obligations_df['department'] == selected_dept]
+    if selected_vendor != "All":
+        obligations_df = obligations_df[obligations_df['vendor_name'] == selected_vendor]
+    
+    # Display
     if not obligations_df.empty:
-        # Display metrics
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Obligations", len(obligations_df))
-        
-        with col2:
-            active_vendors = obligations_df['vendor_name'].nunique()
-            st.metric("Vendors", active_vendors)
-        
-        with col3:
-            departments = obligations_df['department'].nunique()
-            st.metric("Departments", departments)
-        
-        with col4:
-            status_counts = obligations_df['billing_status'].value_counts()
-            st.metric("Billing Statuses", len(status_counts))
-        
-        # Main obligation table
-        st.subheader("Obligation Details")
-        
-        display_columns = [
-            'vendor_name', 'department', 'scope_of_work',
-            'service_levels', 'payment_terms', 'billing_status', 'created_at'
-        ]
-        
-        st.dataframe(
-            obligations_df[display_columns],
-            use_container_width=True,
-            height=400
-        )
-        
-        # Detailed view
-        st.subheader("Detailed Obligation View")
-        
-        if not obligations_df.empty:
-            selected_idx = st.selectbox(
-                "Select obligation to view details",
-                range(len(obligations_df)),
-                format_func=lambda i: f"{obligations_df.iloc[i]['vendor_name']} - {obligations_df.iloc[i]['agreement_type'] or 'N/A'}"
-            )
-            
-            obligation = obligations_df.iloc[selected_idx]
-            
-            with st.expander("📄 View Full Details", expanded=True):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write("**Vendor & Agreement**")
-                    st.write(f"Vendor: {obligation['vendor_name']}")
-                    st.write(f"Department: {obligation['department']}")
-                    st.write(f"Type: {obligation['agreement_type'] or 'N/A'}")
-                    st.write(f"Term: {obligation['agreement_term'] or 'N/A'}")
-                
-                with col2:
-                    st.write("**Financial & Status**")
-                    st.write(f"Payment Terms: {obligation['payment_terms'] or 'N/A'}")
-                    st.write(f"Billing Status: {obligation['billing_status'] or 'N/A'}")
-                    st.write(f"Created: {obligation['created_at']}")
-                
-                st.write("**Scope of Work**")
-                st.write(obligation['scope_of_work'] or "Not specified")
-                
-                st.write("**Service Levels**")
-                st.write(obligation['service_levels'] or "Not specified")
-                
-                st.write("**Data Security**")
-                st.write(obligation['data_security'] or "Not specified")
-                
-                st.write("**KPIs & Commitments**")
-                st.write(obligation['kpis'] or "Not specified")
-                
-                st.write("**Penalties**")
-                st.write(obligation['penalties'] or "Not specified")
-    else:
-        st.info("No obligations found. Upload agreements to extract obligations.")
-
-
-# ============ PAGE: HOD CERTIFICATION ============
-
-def page_hod_certification():
-    """HoD Certification page - Certification and validation"""
-    st.header("✅ HoD Certification")
-    st.markdown("Confirm, suggest edits, or flag issues for vendor obligations.")
-    
-    db = get_database()
-    
-    # Get vendors
-    vendors_df = db.get_all_vendors()
-    
-    if vendors_df.empty:
-        st.error("No vendors found. Please upload vendor master data first.")
-        return
-    
-    vendor_options = vendors_df['vendor_name'].tolist()
-    vendor_mapping = dict(zip(vendor_options, vendors_df['vendor_id'].tolist()))
-    
-    selected_vendor_name = st.selectbox(
-        "Select Vendor to Certify",
-        vendor_options,
-        key="hod_select_vendor"
-    )
-    
-    selected_vendor_id = vendor_mapping[selected_vendor_name]
-    
-    # Get vendor details and obligations
-    vendor_info = db.get_vendor_by_id(selected_vendor_id)
-    obligations_df = db.get_obligations_by_vendor(selected_vendor_id)
-    existing_cert = db.get_certification_by_vendor(selected_vendor_id)
-    
-    if vendor_info:
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Vendor", vendor_info['vendor_name'])
-        
-        with col2:
-            st.metric("Department", vendor_info['department'])
-        
-        with col3:
-            st.metric("Owner", vendor_info['owner'])
-        
-        with col4:
-            status = "Active" if vendor_info['active'] else "Inactive"
-            st.metric("Status", status)
-    
-    # Display obligations
-    if not obligations_df.empty:
-        st.subheader("Associated Obligations")
         st.dataframe(
             obligations_df[[
-                'agreement_type', 'scope_of_work', 'service_levels', 'payment_terms'
-            ]],
-            use_container_width=True
-        )
-    else:
-        st.info("No obligations found for this vendor.")
-    
-    # Certification form
-    st.subheader("Certification")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        hod_name = st.text_input(
-            "Head of Department Name",
-            value=existing_cert.get('hod_name', '') if existing_cert else "",
-            key="hod_name"
-        )
-    
-    with col2:
-        cert_status = st.radio(
-            "Certification Status",
-            ["Confirmed", "Suggested Edit", "Flagged"],
-            index=0 if not existing_cert else ["Confirmed", "Suggested Edit", "Flagged"].index(existing_cert.get('status', 'Confirmed')),
-            key="cert_status"
-        )
-    
-    comments = st.text_area(
-        "Comments",
-        value=existing_cert.get('comments', '') if existing_cert else "",
-        height=150,
-        key="cert_comments"
-    )
-    
-    # Color coding for status
-    if cert_status == "Confirmed":
-        st.markdown('<div class="success-box">✅ Obligations confirmed and accepted</div>', unsafe_allow_html=True)
-    elif cert_status == "Suggested Edit":
-        st.markdown('<div class="warning-box">⚠️ Suggested edits to be made</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="error-box">🚩 Critical issue flagged</div>', unsafe_allow_html=True)
-    
-    if st.button("💾 Save Certification", key="save_cert"):
-        if not hod_name:
-            st.error("Please enter Head of Department name")
-        else:
-            if db.add_certification(selected_vendor_id, hod_name, cert_status, comments):
-                st.success(f"✅ Certification saved for {selected_vendor_name}")
-            else:
-                st.error("Failed to save certification")
-    
-    # Display certification history
-    st.subheader("Certification History")
-    all_certs = db.get_all_certifications()
-    
-    if not all_certs.empty:
-        st.dataframe(
-            all_certs[[
-                'vendor_name', 'hod_name', 'status', 'comments', 'timestamp'
+                'vendor_name', 'department', 'agreement_type', 'agreement_term',
+                'scope_of_work', 'service_levels', 'penalties', 'reporting_obligations',
+                'servicing_obligations', 'kpis_or_volume_commitments', 'data_security_protocols',
+                'payment_obligations', 'milestone_completion', 'dependencies', 'billing_status', 'created_at'
             ]],
             use_container_width=True,
-            height=300
+            hide_index=True
         )
+        st.success(f"Showing {len(obligations_df)} obligation(s)")
     else:
-        st.info("No certifications recorded yet.")
+        st.info("No obligations found")
 
+# ============ PAGE: HOD DASHBOARD ============
+
+def page_hod_dashboard():
+    """HoD Dashboard page"""
+    st.header("🎯 HoD Dashboard")
+    st.markdown(f"Vendor certification dashboard for **{st.session_state.current_user_email}**")
+    
+    db = get_database()
+    current_user = st.session_state.current_user_email
+    
+    # Get vendors assigned to this HoD
+    hod_vendors = db.get_vendors_by_owner(current_user)
+    
+    if hod_vendors.empty:
+        st.info(f"No vendors assigned to {current_user}")
+        return
+    
+    st.subheader("My Vendors")
+    
+    # Display vendors with certification actions
+    for idx, vendor in hod_vendors.iterrows():
+        with st.expander(f"🏢 {vendor['vendor_name']} ({vendor['vendor_id']})"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Vendor Details**")
+                st.write(f"Department: {vendor['department']}")
+                st.write(f"Nature of Expense: {vendor['nature_of_expense']}")
+                st.write(f"Recurring: {'Yes' if vendor['recurring'] else 'No'}")
+                st.write(f"Active: {'Yes' if vendor['active'] else 'No'}")
+                st.write(f"Last Contract Revision: {vendor.get('last_contract_revision_date', 'N/A')}")
+            
+            with col2:
+                st.write("**Certification Status**")
+                
+                # Check existing certification
+                cert = db.get_certification_by_vendor_cycle(vendor['vendor_id'], CURRENT_CYCLE)
+                
+                if cert:
+                    st.write(f"Status: {STATUS_LABELS.get(cert['status'], cert['status'])}")
+                    st.write(f"Comments: {cert['comments'] or 'None'}")
+                    st.write(f"Last Updated: {cert['timestamp']}")
+                else:
+                    st.write("Status: ⏳ Pending")
+            
+            # Action buttons
+            st.write("**Take Action**")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("✅ Confirm", key=f"confirm_{vendor['vendor_id']}"):
+                    if db.add_certification(
+                        vendor['vendor_id'],
+                        CURRENT_CYCLE,
+                        current_user,
+                        "confirmed",
+                        st.text_input(f"Comments for {vendor['vendor_name']}", key=f"comments_confirm_{vendor['vendor_id']}")
+                    ):
+                        st.success("✅ Vendor confirmed!")
+                        st.rerun()
+            
+            with col2:
+                if st.button("📝 Request Edit", key=f"edit_{vendor['vendor_id']}"):
+                    comments = st.text_input(f"Edit request for {vendor['vendor_name']}", key=f"comments_edit_{vendor['vendor_id']}")
+                    if st.button("Submit Edit Request", key=f"submit_edit_{vendor['vendor_id']}"):
+                        if db.add_certification(
+                            vendor['vendor_id'],
+                            CURRENT_CYCLE,
+                            current_user,
+                            "edit_requested",
+                            comments
+                        ):
+                            st.success("📝 Edit request submitted!")
+                            st.rerun()
+            
+            with col3:
+                if st.button("🚩 Flag Issue", key=f"flag_{vendor['vendor_id']}"):
+                    comments = st.text_input(f"Issue for {vendor['vendor_name']}", key=f"comments_flag_{vendor['vendor_id']}")
+                    if st.button("Submit Flag", key=f"submit_flag_{vendor['vendor_id']}"):
+                        if db.add_certification(
+                            vendor['vendor_id'],
+                            CURRENT_CYCLE,
+                            current_user,
+                            "issue_flagged",
+                            comments
+                        ):
+                            st.success("🚩 Issue flagged!")
+                            st.rerun()
+    
+    # Summary
+    st.subheader("Certification Summary")
+    certifications = db.get_certifications_by_hod(current_user, CURRENT_CYCLE)
+    
+    if not certifications.empty:
+        status_counts = certifications['status'].value_counts().to_dict()
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Confirmed", status_counts.get("confirmed", 0))
+        with col2:
+            st.metric("Edit Requested", status_counts.get("edit_requested", 0))
+        with col3:
+            st.metric("Issues Flagged", status_counts.get("issue_flagged", 0))
 
 # ============ PAGE: FP&A DASHBOARD ============
 
 def page_fpa_dashboard():
-    """FP&A Dashboard - Summary metrics and visualizations"""
-    st.header("📊 FP&A Dashboard")
-    st.markdown("Overview of vendor obligations and compliance metrics.")
+    """FP&A Dashboard page"""
+    st.header("📈 FP&A Dashboard")
+    st.markdown("Finance & Procurement Analytics Dashboard")
     
     db = get_database()
     
-    # Get metrics
-    metrics = db.get_dashboard_metrics()
-    
-    # Display key metrics
+    # Metrics
     st.subheader("Key Metrics")
+    metrics = db.get_dashboard_metrics()
+    certifications = db.get_all_certifications(CURRENT_CYCLE)
     
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("👥 Total Vendors", metrics['total_vendors'])
+        st.metric("Total Vendors", metrics['total_vendors'])
     
     with col2:
-        st.metric("✅ Active Vendors", metrics['active_vendors'])
+        st.metric("Active Agreements", metrics['total_agreements'])
     
     with col3:
-        st.metric("📄 Agreements", metrics['total_agreements'])
+        pending = metrics['total_vendors'] - len(certifications[certifications['status'].notna()])
+        st.metric("Pending Certifications", max(0, pending))
     
     with col4:
-        st.metric("📋 Obligations", metrics['total_obligations'])
+        confirmed = len(certifications[certifications['status'] == 'confirmed'])
+        st.metric("Confirmed", confirmed)
     
     with col5:
-        st.metric("⏳ Pending Certs", metrics['pending_certifications'])
+        flagged = len(certifications[certifications['status'] == 'issue_flagged'])
+        st.metric("Issues Flagged", flagged)
     
-    with col6:
-        st.metric("🚩 Flagged Issues", metrics['flagged_issues'])
+    # Certification table
+    st.subheader("Certification Details")
     
-    # Charts
     col1, col2 = st.columns(2)
-    
     with col1:
-        st.subheader("Vendors by Department")
-        dept_counts = db.get_vendors_by_department_count()
-        
-        if dept_counts:
-            import pandas as pd
-            dept_df = pd.DataFrame(list(dept_counts.items()), columns=['Department', 'Count'])
-            st.bar_chart(dept_df.set_index('Department'))
-        else:
-            st.info("No vendor data available")
-    
+        selected_status = st.multiselect(
+            "Filter by status",
+            ["confirmed", "edit_requested", "issue_flagged"],
+            default=["confirmed", "edit_requested", "issue_flagged"]
+        )
     with col2:
-        st.subheader("Obligations by Billing Status")
-        status_counts = db.get_obligations_by_status()
-        
-        if status_counts:
-            import pandas as pd
-            status_df = pd.DataFrame(list(status_counts.items()), columns=['Billing Status', 'Count'])
-            st.bar_chart(status_df.set_index('Billing Status'))
-        else:
-            st.info("No obligation data available")
+        selected_cycle = st.selectbox("Filter by cycle", [CURRENT_CYCLE, "All"], key="cycle_filter")
     
-    # Certification summary
-    st.subheader("Certification Status Summary")
-    cert_summary = db.get_certification_summary()
-    
-    if cert_summary:
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            confirmed = cert_summary.get('Confirmed', 0)
-            st.metric("✅ Confirmed", confirmed)
-        
-        with col2:
-            suggested = cert_summary.get('Suggested Edit', 0)
-            st.metric("⚠️ Suggested Edit", suggested)
-        
-        with col3:
-            flagged = cert_summary.get('Flagged', 0)
-            st.metric("🚩 Flagged", flagged)
+    if selected_cycle == "All":
+        filtered_certs = db.get_all_certifications()
     else:
-        st.info("No certifications recorded yet")
+        filtered_certs = certifications
     
-    # Recent certifications
-    st.subheader("Recent Certifications")
-    all_certs = db.get_all_certifications()
+    if selected_status:
+        filtered_certs = filtered_certs[filtered_certs['status'].isin(selected_status)]
     
-    if not all_certs.empty:
+    if not filtered_certs.empty:
         st.dataframe(
-            all_certs[[
-                'vendor_name', 'hod_name', 'status', 'timestamp'
-            ]].head(10),
-            use_container_width=True
+            filtered_certs[[
+                'vendor_id', 'vendor_name', 'department', 'owner_email',
+                'certification_cycle', 'status', 'comments', 'timestamp'
+            ]].sort_values('timestamp', ascending=False),
+            use_container_width=True,
+            hide_index=True
         )
     else:
-        st.info("No certifications recorded yet")
+        st.info("No certifications found")
 
+# ============ MAIN ROUTER ============
 
-# ============ MAIN APP ============
+if page == "🏠 Home":
+    page_home()
+elif page == "📦 Vendor Master":
+    page_vendor_master()
+elif page == "📄 Agreement Upload":
+    page_agreement_upload()
+elif page == "📋 Obligation Register":
+    page_obligation_register()
+elif page == "🎯 HoD Dashboard":
+    page_hod_dashboard()
+elif page == "📈 FP&A Dashboard":
+    page_fpa_dashboard()
 
-def main():
-    """Main application"""
-    
-    # Sidebar navigation
-    st.sidebar.title("🏢 VOCE")
-    st.sidebar.markdown("Vendor Obligation Control Engine")
-    st.sidebar.divider()
-    
-    page = st.sidebar.radio(
-        "Navigation",
-        [
-            "🏠 Home",
-            "📦 Vendor Master",
-            "📄 Agreement Upload",
-            "📋 Obligation Register",
-            "✅ HoD Certification",
-            "📊 FP&A Dashboard"
-        ]
-    )
-    
-    st.sidebar.divider()
-    
-    # Display API status
-    if is_gemini_configured():
-        st.sidebar.success("✅ Gemini API Configured")
-    else:
-        st.sidebar.warning("⚠️ GEMINI_API_KEY not set")
-    
-    st.sidebar.info(
-        "**Setup Instructions:**\n\n"
-        "1. Upload vendor master data\n"
-        "2. Upload agreement documents\n"
-        "3. Review extracted obligations\n"
-        "4. Certify obligations"
-    )
-    
-    # Route to pages
-    if page == "🏠 Home":
-        st.title("🏢 Vendor Obligation Control Engine (VOCE)")
-        st.markdown("""
-        Welcome to VOCE - an automated vendor obligation tracking system.
-        
-        ### Features
-        
-        **📦 Vendor Master**
-        - Upload vendor master data from CSV
-        - Manage vendor information
-        - Filter by department
-        
-        **📄 Agreement Upload**
-        - Upload PDF, DOCX, or TXT agreements
-        - Automatic text extraction
-        - AI-powered obligation parsing with Gemini
-        
-        **📋 Obligation Register**
-        - View all extracted obligations
-        - Search and filter capabilities
-        - Detailed obligation information
-        
-        **✅ HoD Certification**
-        - Confirm vendor obligations
-        - Suggest edits
-        - Flag critical issues
-        
-        **📊 FP&A Dashboard**
-        - Summary metrics and KPIs
-        - Vendor and obligation analytics
-        - Certification status overview
-        
-        ### Quick Start
-        
-        1. **Upload Vendor Data** → Use the Vendor Master page to upload your vendor CSV
-        2. **Upload Agreements** → Go to Agreement Upload to process vendor contracts
-        3. **Review Obligations** → Check the Obligation Register for extracted data
-        4. **Certify** → Use HoD Certification to validate obligations
-        5. **Dashboard** → Monitor metrics on the FP&A Dashboard
-        
-        ### Supported File Formats
-        
-        - **PDF** (.pdf)
-        - **Word** (.docx)
-        - **Text** (.txt)
-        """)
-        
-        # Quick stats
-        db = get_database()
-        metrics = db.get_dashboard_metrics()
-        
-        st.subheader("System Status")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Vendors", metrics['total_vendors'])
-        
-        with col2:
-            st.metric("Agreements", metrics['total_agreements'])
-        
-        with col3:
-            st.metric("Obligations", metrics['total_obligations'])
-    
-    elif page == "📦 Vendor Master":
-        page_vendor_master()
-    
-    elif page == "📄 Agreement Upload":
-        page_agreement_upload()
-    
-    elif page == "📋 Obligation Register":
-        page_obligation_register()
-    
-    elif page == "✅ HoD Certification":
-        page_hod_certification()
-    
-    elif page == "📊 FP&A Dashboard":
-        page_fpa_dashboard()
-
-
-if __name__ == "__main__":
-    main()
+# Footer
+st.markdown("---")
+st.markdown(f"**VOCE** | Cycle: {CURRENT_CYCLE} | User: {st.session_state.current_user_email} | Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

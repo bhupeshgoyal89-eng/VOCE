@@ -14,7 +14,7 @@ class Vendor:
     vendor_name: str
     department: str
     nature_of_expense: str
-    owner: str
+    owner_email: str
     recurring: bool
     active: bool
     last_contract_revision_date: str
@@ -39,9 +39,11 @@ class Obligation:
     service_levels: Optional[str] = None
     penalties: Optional[str] = None
     reporting_obligations: Optional[str] = None
-    payment_terms: Optional[str] = None
-    kpis: Optional[str] = None
-    data_security: Optional[str] = None
+    servicing_obligations: Optional[str] = None
+    kpis_or_volume_commitments: Optional[str] = None
+    data_security_protocols: Optional[str] = None
+    payment_obligations: Optional[str] = None
+    milestone_completion: Optional[str] = None
     dependencies: Optional[str] = None
     billing_status: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -51,8 +53,9 @@ class Obligation:
 class Certification:
     """HoD certification data model"""
     vendor_id: str
-    hod_name: str
-    status: str  # "Confirmed", "Suggested Edit", "Flagged"
+    certification_cycle: str
+    hod_email: str
+    status: str  # "confirmed", "edit_requested", "issue_flagged"
     comments: str
     timestamp: datetime
 
@@ -65,10 +68,10 @@ CREATE TABLE IF NOT EXISTS vendors (
     vendor_name TEXT NOT NULL,
     department TEXT NOT NULL,
     nature_of_expense TEXT NOT NULL,
-    owner TEXT NOT NULL,
-    recurring BOOLEAN DEFAULT 0,
-    active BOOLEAN DEFAULT 1,
-    last_contract_revision_date TEXT,
+    owner_email TEXT NOT NULL,
+    recurring INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    last_contract_revision_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """
@@ -93,9 +96,11 @@ CREATE TABLE IF NOT EXISTS obligations (
     service_levels TEXT,
     penalties TEXT,
     reporting_obligations TEXT,
-    payment_terms TEXT,
-    kpis TEXT,
-    data_security TEXT,
+    servicing_obligations TEXT,
+    kpis_or_volume_commitments TEXT,
+    data_security_protocols TEXT,
+    payment_obligations TEXT,
+    milestone_completion TEXT,
     dependencies TEXT,
     billing_status TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -105,12 +110,14 @@ CREATE TABLE IF NOT EXISTS obligations (
 
 CERTIFICATIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS certifications (
-    certification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     vendor_id TEXT NOT NULL,
-    hod_name TEXT NOT NULL,
+    certification_cycle TEXT NOT NULL,
+    hod_email TEXT NOT NULL,
     status TEXT NOT NULL,
     comments TEXT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id)
+    FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id),
+    UNIQUE(vendor_id, certification_cycle)
 )
 """
